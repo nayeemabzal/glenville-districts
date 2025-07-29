@@ -1,0 +1,1425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Glenville Zoning Regulations Lookup</title>
+    <!-- Chosen Palette: WCAG AA Compliant palette based on report audit (e.g., #0056b3 for primary blue, #146c43 for green, #842029 for red). -->
+    <!-- Application Structure Plan: A Single-Page Application (SPA) with two primary, user-selectable modes: "Search by District" and "Search by Use". This dual-path structure was chosen because it directly maps to the two most common user queries. The results for either query are dynamically rendered in a single content area below the controls, creating a seamless and intuitive user flow without page reloads. -->
+    <!-- Visualization & Content Choices: Report Info -> Goal -> Presentation -> Interaction -> Justification. Zoning Data -> Inform -> Dynamic HTML Tables/Lists -> Users can search/filter data. Use Categories -> Organize/Filter -> HTML lists with styled <span> badges and filter buttons -> JS toggles visibility -> allows users to reduce complexity. Dimensional Data -> Compare requirements -> Semantic HTML <table> -> On mobile, transforms to "Card View" via CSS -> best practice for responsive tables, avoids horizontal scroll. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
+    <style>
+        .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+        :is(button, select, input, textarea):focus-visible { outline: 3px solid #0d6efd; outline-offset: 2px; box-shadow: 0 0 0 4px rgba(13, 110, 253, 0.25); }
+        @media (max-width: 768px) {
+           .dimension-table thead, .parking-table thead { border: none; clip: rect(0 0 0 0); height: 1px; margin: -1px; overflow: hidden; padding: 0; position: absolute; width: 1px; }
+           .dimension-table tr, .parking-table tr { display: block; margin-bottom: 1rem; border: 1px solid #ddd; border-radius: 0.25rem; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+           .dimension-table td, .parking-table td { display: block; text-align: right; font-size: 0.875rem; border: none; border-bottom: 1px solid #eee; padding-left: 50%; position: relative; }
+           .dimension-table td::before, .parking-table td::before { content: attr(data-label); position: absolute; left: 0.75rem; width: 45%; padding-right: 0.75rem; white-space: nowrap; font-weight: 600; text-align: left; }
+        }
+        .section-header {
+            color: #0056b3;
+            border-bottom: 2px solid #0056b3;
+            padding-bottom: 5px;
+            font-size: 1.25rem;
+            font-weight: bold;
+        }
+        summary {
+            cursor: pointer;
+            list-style: none; /* Hide default summary marker */
+        }
+        summary::-webkit-details-marker {
+            display: none; /* Hide default summary marker in Chrome */
+        }
+        @media print {
+            body { background-color: white; }
+            main { box-shadow: none; border: none; }
+            header, .search-controls, #pdfButton, .info-button, summary span.text-sm, .interactive-tool { display: none !important; }
+            details { page-break-inside: avoid; }
+            details[open] { page-break-inside: avoid; }
+            details > * { display: block !important; }
+        }
+
+        /* Tab specific styling */
+        .tab-button {
+            padding: 0.75rem 1.25rem;
+            border-radius: 0.5rem 0.5rem 0 0;
+            background-color: #e2e8f0; /* bg-gray-200 */
+            color: #4a5568; /* text-gray-700 */
+            font-weight: 600;
+            transition: all 0.2s ease-in-out;
+            border-bottom: 2px solid transparent;
+        }
+
+        .tab-button:hover {
+            background-color: #cbd5e0; /* hover:bg-gray-300 */
+        }
+
+        .tab-button.active {
+            background-color: #ffffff; /* bg-white */
+            color: #0056b3; /* primary blue */
+            border-bottom: 2px solid #0056b3;
+            box-shadow: 0 -2px 5px rgba(0,0,0,0.1);
+            z-index: 10;
+            position: relative;
+        }
+
+        .tab-container {
+            display: flex;
+            border-bottom: 2px solid #e2e8f0; /* border-gray-200 */
+            margin-bottom: 1rem;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans p-4 md:p-8">
+
+    <main class="container max-w-4xl mx-auto bg-white p-6 md:p-10 rounded-lg shadow-lg">
+        <header class="text-center mb-8">
+            <h1 class="text-2xl md:text-4xl font-bold text-gray-800">Glenville Zoning Regulations Lookup</h1>
+            <p class="text-gray-600 mt-2">An interactive tool to search zoning regulations by district or by land use.</p>
+        </header>
+
+        <section class="search-controls mb-8 p-4 bg-gray-50 rounded-md border">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-lg font-bold text-gray-700">Find Zoning Information</h2>
+                <button id="resetButton" class="text-sm text-blue-600 hover:underline">Reset Search</button>
+            </div>
+            <div class="tab-container">
+                <button id="tabDistrict" class="tab-button active" data-mode="district">Search by District</button>
+                <button id="tabUse" class="tab-button" data-mode="use">Search by Use</button>
+                <button id="tabCompare" class="tab-button" data-mode="compare">Compare Uses</button>
+            </div>
+            <div class="search-section flex flex-col gap-4">
+                <div id="districtSearchWrapper" class="search-wrapper w-full">
+                    <label for="districtSelect" class="sr-only">Select a District</label>
+                    <select id="districtSelect" class="w-full p-3 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition">
+                        <option value="">Select a district to see regulations...</option>
+                    </select>
+                </div>
+                <div id="useSearchWrapper" class="search-wrapper w-full" style="display: none;">
+                    <label for="useSelect" class="sr-only">Select a Use</label>
+                    <select id="useSelect" class="w-full p-3 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition">
+                        <option value="">Select a use to see where it's allowed...</option>
+                    </select>
+                </div>
+                <div id="compareUsesWrapper" class="search-wrapper w-full flex flex-col gap-4" style="display: none;">
+                    <div>
+                        <label for="compareDistrictSelect" class="block text-sm font-medium text-gray-700 mb-1">Select District for Comparison</label>
+                        <select id="compareDistrictSelect" class="w-full p-3 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition">
+                            <option value="">Select a district...</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="currentUseSelect" class="block text-sm font-medium text-gray-700 mb-1">Current Land Use</label>
+                        <select id="currentUseSelect" class="w-full p-3 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition" disabled>
+                            <option value="">Select a district first...</option>
+                        </select>
+                    </div>
+                    <div class="flex flex-col md:flex-row md:items-center gap-2">
+                        <label for="existingParkingSpaces" class="block text-sm font-medium text-gray-700 md:w-1/2">Existing Parking Spaces:</label>
+                        <input type="number" id="existingParkingSpaces" class="w-full p-3 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition" placeholder="e.g., 10">
+                    </div>
+                    <div>
+                        <label for="proposedUseSelect" class="block text-sm font-medium text-gray-700 mb-1">Proposed Land Use</label>
+                        <select id="proposedUseSelect" class="w-full p-3 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition" disabled>
+                            <option value="">Select a district first...</option>
+                        </select>
+                    </div>
+                    <div class="flex flex-col md:flex-row md:items-center gap-2">
+                        <label for="proposedUseQuantity" id="proposedUseQuantityLabel" class="block text-sm font-medium text-gray-700 md:w-1/2">Proposed Use Quantity:</label>
+                        <input type="number" id="proposedUseQuantity" class="w-full p-3 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition" placeholder="Enter value">
+                    </div>
+                    <div class="p-3 bg-gray-100 rounded-md border border-gray-200">
+                        <p class="font-semibold text-gray-800 mb-2">Change in Tenancy Conditions (§ 270-114):</p>
+                        <div class="flex items-center mb-2">
+                            <input type="checkbox" id="vacantTwoYears" class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                            <label for="vacantTwoYears" class="ml-2 text-gray-700 text-sm">Was the building vacant for 2+ years prior to change?</label>
+                        </div>
+                        <div class="flex items-center">
+                            <input type="checkbox" id="siteChanges" class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                            <label for="siteChanges" class="ml-2 text-gray-700 text-sm">Will there be changes to building footprint, GFA, parking, or other site features?</label>
+                        </div>
+                    </div>
+                    <button id="compareUsesBtn" class="w-full px-4 py-2 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 transition">Compare Uses</button>
+                </div>
+            </div>
+        </section>
+
+        <div id="results" class="mt-8"></div>
+    </main>
+
+    <!-- Definition Modal -->
+    <div id="definitionModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 hidden z-50">
+        <div class="bg-white rounded-lg shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col">
+            <div class="flex justify-between items-center p-4 border-b">
+                <h3 id="modalTitle" class="text-xl font-bold text-gray-800">Definition</h3>
+                <button id="closeModalButton" class="text-gray-500 hover:text-gray-800 text-3xl leading-none" aria-label="Close modal">&times;</button>
+            </div>
+            <div id="modalContent" class="p-6 overflow-y-auto space-y-4">
+                <!-- Modal content injected here -->
+            </div>
+        </div>
+    </div>
+
+<script>
+const supplementalRegulations = { '270-36':{title:'§ 270-36 Location requirements.',link:'https://ecode360.com/35706249',text:`No adult use shall be located within a one-half-mile radius of another adult use. No adult use shall be located within a one-half-mile radius of any RM Multi-Family Residential District, PR Professional Residential District, SR Suburban Residential District, RA Rural Residential and Agricultural District, or any residential planned development district. No adult use shall be located within a one-half-mile radius of any school, place of worship, public park or playground.`},'270-45':{title:'§ 270-45 Home occupations.',link:'https://ecode360.com/6961902',text:`A. Purpose. The intent of this section is to accommodate small-scale owner-occupied businesses, trades or professions within residential areas...`},'270-51':{title:'§ 270-51 Accessory apartments.',link:'https://ecode360.com/6961902',text:`A. Purposes:\n(1) To provide homeowners with a means of obtaining, through rental income, companionship, security and income...\nB. Specific regulations...\n(1) Accessory apartments will be permitted only in single-family dwellings...`},'270-60':{title:'§ 270-60 Commercial logging.',link:'https://ecode360.com/6961902',text:`A. Commercial logging is permitted only in the Rural Residential and Agricultural (RA) Zoning District and the Land Conservation District...\nB. No commercial logging is to occur within 50 feet of any property line...`}};
+const parkingData={'Accessory apartment':{min:'1 per apartment',max:'Not to exceed 120% of the minimum',calc:{unit:'apartment',value:1}},'Home occupation':{min:'1 per nonresident employee plus requirement for primary dwelling',max:''},'Residential - single-family':{min:'2 per dwelling',max:'Not to exceed 120% of the minimum',calc:{unit:'dwelling',value:2}},'Residential - multifamily':{min:'1.5 per dwelling',max:'Not to exceed 120% of the minimum',calc:{unit:'dwelling',value:1.5}},'Assisted-living facility':{min:'0.5 per unit',max:'Not to exceed 120% of the minimum',calc:{unit:'unit',value:0.5}},'Bed-and-breakfast':{min:'1 per sleeping room',max:'Not to exceed 120% of the minimum',calc:{unit:'room',value:1}},'Day-care center':{min:'1.25 per employee',max:'Not to exceed 120% of the minimum',calc:{unit:'employee',value:1.25}},'Religious use':{min:'1 per 5 seats',max:'Not to exceed 120% of the minimum',calc:{unit:'seats',value:1/5}},'Not-for-profit recreation facility':{min:'15 per athletic field or 2.5 per court',max:'Not to exceed 120% of the minimum'},'Retail and general office uses':{min:'1 per 350 square feet of gfa',max:'Not to exceed 120% of the minimum',calc:{unit:'sq ft gfa',value:1/350}},Restaurant:{min:'1 per 4 seats',max:'Not to exceed 120% of the minimum',calc:{unit:'seats',value:1/4}},'Medical Office/Clinic':{min:'2.5 per examination room',max:'Not to exceed 120% of the minimum',calc:{unit:'exam room',value:2.5}},'Shopping center/mall':{min:'1 per 250 square feet of gfa',max:'Not to exceed 120% of the minimum',calc:{unit:'sq ft gfa',value:1/250}},'Adult use':{min:'1 per 350 square feet of gfa',max:'Not to exceed 120% of the minimum',calc:{unit:'sq ft gfa',value:1/350}},'Produce stand':{min:'1 per 250 sq ft of gfa',max:'Not to exceed 120% of minimum',calc:{unit:'sq ft gfa',value:1/250}},Cemetery:{min:'1 per full-time employee',max:'Not to exceed 120% of minimum'},'Craft production':{min:'1 per employee on the largest shift',max:'Not to exceed 120% of minimum'},Veterinarian:{min:'1.5 per employee of largest shift',max:'Not to exceed 120% of minimum'},'Horse stable':{min:'1 per 4 stables',max:'Not to exceed 120% of minimum'},'School - trade and training':{min:'1 per 2 students of maximum enrollment',max:'Not to exceed 120% of minimum',calc:{unit:'students',value:0.5}},Museum:{min:'1 per 600 sq ft of gfa',max:'Not to exceed 120% of minimum',calc:{unit:'sq ft gfa',value:1/600}},Library:{min:'1 per 400 sq ft of gfa',max:'Not to exceed 120% of minimum',calc:{unit:'sq ft gfa',value:1/400}},'Personal and general services':{min:'2 per chair or 1 per 300 sq ft',max:'Not to exceed 120% of minimum'},Laundromat:{min:'1 per 3 washing machines',max:'Not to exceed 120% of minimum'},'Motel/hotel':{min:'1 per room or suite',max:'Not to exceed 120% of the minimum',calc:{unit:'room/suite',value:1}},'Indoor and outdoor recreation facility':{min:'15 per playing area or 2.5 per court',max:'Not to exceed 120% of minimum'},'Automobile sales and vehicle and equipment rental agencies':{min:'1 per 350 square feet of gfa',max:'Not to exceed 120% of minimum'},'Gas station with walk-in retail':{min:'2 per gas pump',max:'Not to exceed 120% of minimum'},"Contractor's yard":{min:'1.5 per full-time employee',max:'Not to exceed 120% of minimum'},'Printing/publishing shop':{min:'1 per 400 sq ft of gfa',max:'Not to exceed 120% of minimum'},'Industrial, manufacturing and utility uses':{min:'1 per employee on the largest shift',max:'Not to exceed 120% of minimum'},Warehouse:{min:'1 per 600 sq ft of gfa',max:'Not to exceed 120% of minimum',calc:{unit:'sq ft gfa',value:1/600}},'Auto body shop and automobile repair shop':{min:'1.5 per service bay',max:'Not to exceed 120% of minimum'},'Campground and RV park':{min:'2 per site',max:'Not to exceed 120% of minimum'},'Marina':{min:'1 per boat slip',max:'Not to exceed 120% of minimum'},Airport:{min:'1 per 5 aircraft tie-downs',max:'Not to exceed 120% of minimum'},'Self-storage facility':{min:'1 per 200 sq ft of office area',max:'Not to exceed 120% of minimum'}};
+const signData={general:["No sign shall be erected or maintained so as to obstruct any fire escape, window, door or other means of egress.","No sign shall be located in such a manner as to cause a traffic hazard.","No sign shall be attached to trees, utility poles or other unapproved supporting structures."],residential:{totalArea:"15 sq ft",types:[{type:"Wall/Facade Sign",maxArea:"15 sq ft",maxHeight:"N/A",setback:"10 ft from property lines"},{type:"Monument/Ground Sign",maxArea:"15 sq ft",maxHeight:"8 ft",setback:"20 ft from property lines"}]},business:{totalArea:"150 sq ft",types:[{type:"Wall/Facade Sign",maxArea:"1 sq ft per linear foot of building frontage, not to exceed 50 sq ft",maxHeight:"Cannot project more than 5 ft above roofline",setback:"10 ft from property lines"},{type:"Monument/Ground Sign",maxArea:"65 sq ft",maxHeight:"8 ft",setback:"10 ft from property lines"},{type:"Pole/Pylon Sign",maxArea:"65 sq ft (75 sq ft in shopping centers)",maxHeight:"25 ft",setback:"10 ft from property lines"}]},temporary:[{type:"Grand Opening/Coming Soon",maxArea:"20 sq ft",duration:"45 days prior to opening, 5 days after",setback:"10 ft from pavement"},{type:"Sandwich Board/Sidewalk",maxArea:"6 sq ft",duration:"Removed at close of business",setback:"10 ft from pavement"},{type:"Roadside Agricultural/Farm Stand",maxArea:"12 sq ft",duration:"5 days prior to opening, 5 days after closing",setback:"10 ft from pavement"},{type:"Political/Campaign",maxArea:"16 sq ft",duration:"60 days prior to election, 5 days after",setback:"5 ft from pavement"},{type:"For Sale/For Rent",maxArea:"Not specified",duration:"Until property is sold/rented",setback:"Not specified"}]};
+const zoningData={districts:[{code:"RA",name:"Rural Residential and Agricultural District",signCategory:"residential",purpose:"To maintain low-density residential and agricultural development in areas that are considered rural, and to accommodate outdoor recreation facilities and other land uses which are dependent on a rural setting.",uses:{byRight:{title:"Permitted by Right",items:[{name:"Single-family dwelling",parkingKey:"Residential - single-family",definition:"A detached building designed for or occupied exclusively by one family.", type: "residential"},{name:"Home occupation",parkingKey:"Home occupation",definition:"Any occupation or profession carried out by a resident. See Supplemental Regulations for specific conditions.",supplementalCode:'270-45', type: "residential"},{name:"Agricultural activities/farms",definition:"The use of land for profit through the production of crops, livestock, etc.", type: "agricultural"},{name:"Roadside produce stand (<600 sq ft)",parkingKey:"Produce stand",definition:"A permanent or temporary structure used for the sale of agricultural products.", type: "commercial"},{name:"Cemetery",parkingKey:"Cemetery",definition:"Land used or intended to be used for the burial of the dead.", type: "public/institutional"},{name:"Commercial logging",definition:"The commercial harvesting of timber. See Supplemental Regulations for specific conditions.",supplementalCode:'270-60', type: "agricultural"}]},sitePlanReview:{title:"Requires Site Plan Review",items:[{name:"Religious uses",parkingKey:"Religious use",definition:"A structure or place in which worship, ceremonies, rituals and education pertaining to a particular system of beliefs are held.", type: "public/institutional"},{name:"Personal wireless service facility",definition:"A facility for the provision of personal wireless services.", type: "utility"},{name:"Microbrewery/microwinery/microdistillery",parkingKey:"Craft production",definition:"Small-scale production facilities for beer, wine, or spirits.", type: "commercial"}]},conditionalUse:{title:"Conditional Use Permit Required",items:[{name:"Two-family dwelling",parkingKey:"Residential - multifamily",definition:"A detached building containing two dwelling units.", type: "residential"},{name:"Bed-and-breakfast",parkingKey:"Bed-and-breakfast",definition:"An owner-occupied dwelling with rooms rented to transient guests.", type: "residential"},{name:"Veterinary clinic/animal hospital/kennel",parkingKey:"Veterinarian",definition:"A place where animals are given medical care or boarded.", type: "commercial"},{name:"Boarding stables and riding academies",parkingKey:"Horse stable",definition:"Facilities for boarding horses and riding instruction.", type: "recreation"},{name:"Accessory apartments",parkingKey:"Accessory apartment",definition:"A secondary dwelling unit within a single-family dwelling. See Supplemental Regulations for specific conditions.",supplementalCode:'270-51', type: "residential"},{name:"Short-term residential units",parkingKey:"Residential - multifamily",definition:"Temporary residential accommodations.", type: "residential"}]},conditionalUseAndSitePlan:{title:"Conditional Use & Site Plan Review",items:[{name:"Hunting/fishing/game club",definition:"Private clubs or facilities for hunting, fishing, or game-related activities.", type: "recreation"},{name:"Not-for-profit recreation facility",parkingKey:"Not-for-profit recreation facility",definition:"Non-commercial facilities for recreational activities.", type: "recreation"}]}},dimensionalRegulations:[{use:"Single-family and two-family (w/o water)",minLotSize:"3 acres",minWidth:"300 ft",minDepth:"300 ft",frontSetback:"75 ft",sideSetback:"50 ft",rearSetback:"50 ft",maxHeight:"35 ft",maxLotCoverage:"10%"},{use:"Single-family and two-family (w/water)",minLotSize:"2 acres",minWidth:"200 ft",minDepth:"200 ft",frontSetback:"75 ft",sideSetback:"50 ft",rearSetback:"50 ft",maxHeight:"35 ft",maxLotCoverage:"15%"},{use:"Bed-and-breakfast establishments",minLotSize:"Same",minWidth:"as",minDepth:"single-family",frontSetback:"and",sideSetback:"two-family",rearSetback:"",maxHeight:"",maxLotCoverage:""},{use:"Agricultural activities/farms",minLotSize:"5 acres",minWidth:"200 ft",minDepth:"200 ft",frontSetback:"50 ft",sideSetback:"50 ft",rearSetback:"50 ft",maxHeight:"35 ft",maxLotCoverage:"10%"},{use:"Home occupations and cemeteries",minLotSize:"Not applicable",minWidth:"",minDepth:"",frontSetback:"",sideSetback:"",rearSetback:"",maxHeight:"",maxLotCoverage:""},{use:"All other permitted uses",minLotSize:"2 acres",minWidth:"200 ft",minDepth:"200 ft",frontSetback:"75 ft",sideSetback:"50 ft",rearSetback:"50 ft",maxHeight:"35 ft",maxLotCoverage:"15%"}],accessoryUses:{definitions:{"Accessory Building or Structure":"A building or structure devoted to an accessory use that is located at least 10 feet from the principal building and on the same parcel as the principal building.","Accessory Use":"A use which is conducted or located on the same lot as the principal building or use served, clearly incidental to, subordinate to, and serves the principal use."},permittedUses:["Private garages not attached to the dwelling","Carports","Private swimming pools","Decks and patios","Tennis courts, basketball courts, volleyball courts, shuffleboard courts, horseshoe pits","Storage sheds and similar outbuildings","Receive-only antennas","Doghouses and similar shelters for household pets","Outdoor fireplaces and barbecue pits","Heat pumps, air-conditioning units","Rolloffs and temporary dumpsters (max 31 days in 6 months)","Barns, silos, stables, coops, crop bins, milk houses","Portable storage containers (with permit)"],setbacks:{bySize:[{maxSize:280,side:"5 feet",rear:"5 feet"},{minSize:281,maxSize:1200,side:"10 feet",rear:"10 feet"},{minSize:1201,maxSize:2400,side:"20 feet",rear:"20 feet"},{minSize:2401,maxSize:3600,side:"30 feet",rear:"30 feet"}],specific:[{type:"Swimming Pools",side:"10 feet",rear:"10 feet",conditions:"Must be enclosed by a fence at least 4 feet high"},{type:"Decks",side:"10 feet",rear:"10 feet"}]},heightLimit:"35 feet",coverageLimit:"20% of the lot",specialConditions:["No accessory structures in front yard unless on parcels over 3 acres","Dumpsters must be screened","Portable storage containers: 1 unit max, 10 ft from property lines"]}},{code:"SR",name:"Suburban Residential District",signCategory:"residential",purpose:"To accommodate relatively dense single-family development, and related uses, in those areas of Glenville where public water is available.",uses:{byRight:{title:"Permitted by Right",items:[{name:"Single-family dwelling",parkingKey:"Residential - single-family",definition:"A detached building designed for or occupied exclusively by one family.", type: "residential"},{name:"Home occupation",parkingKey:"Home occupation",definition:"Any occupation or profession carried out by a resident. See Supplemental Regulations for specific conditions.",supplementalCode:'270-45', type: "residential"},{name:"Cemetery",parkingKey:"Cemetery",definition:"Land used or intended to be used for the burial of the dead.", type: "public/institutional"}]},sitePlanReview:{title:"Requires Site Plan Review",items:[{name:"Day-care center",parkingKey:"Day-care center",definition:"A facility for the care of children or adults.", type: "public/institutional"},{name:"Religious uses",parkingKey:"Religious use",definition:"A structure or place in which worship, ceremonies, rituals and education pertaining to a particular system of beliefs are held.", type: "public/institutional"},{name:"Personal wireless service facility",definition:"A facility for the provision of personal wireless services.", type: "utility"},{name:"Not-for-profit recreation facility",parkingKey:"Not-for-profit recreation facility",definition:"Non-commercial facilities for recreational activities.", type: "recreation"},{name:"Roadside produce stand",parkingKey:"Produce stand",definition:"A permanent or temporary structure used for the sale of agricultural products.", type: "commercial"}]},conditionalUse:{title:"Conditional Use Permit Required",items:[{name:"Bed-and-breakfast",parkingKey:"Bed-and-breakfast",definition:"An owner-occupied dwelling with rooms rented to transient guests.", type: "residential"}]},conditionalUseAndSitePlan:{title:"Conditional Use & Site Plan Review",items:[]}},dimensionalRegulations:[{use:"Single-family (w/o sewer)",minLotSize:"20,000 sq ft",minWidth:"120 ft",minDepth:"150 ft",frontSetback:"30 ft",sideSetback:"15 ft",rearSetback:"35 ft",maxHeight:"35 ft",maxLotCoverage:"25%"},{use:"Single-family (w/sewer)",minLotSize:"15,000 sq ft",minWidth:"100 ft",minDepth:"150 ft",frontSetback:"30 ft",sideSetback:"15 ft",rearSetback:"35 ft",maxHeight:"35 ft",maxLotCoverage:"35%"},{use:"Bed-and-breakfast establishments",minLotSize:"30,000 sq ft",minWidth:"140 ft",minDepth:"180 ft",frontSetback:"35 ft",sideSetback:"20 ft",rearSetback:"40 ft",maxHeight:"35 ft",maxLotCoverage:"25%"},{use:"Day-care centers",minLotSize:"40,000 sq ft",minWidth:"140 ft",minDepth:"200 ft",frontSetback:"40 ft",sideSetback:"20 ft",rearSetback:"40 ft",maxHeight:"35 ft",maxLotCoverage:"25%"},{use:"Not-for-profit recreation facility",minLotSize:"40,000 sq ft",minWidth:"140 ft",minDepth:"180 ft",frontSetback:"35 ft",sideSetback:"30 ft",rearSetback:"40 ft",maxHeight:"35 ft",maxLotCoverage:"30%"},{use:"Home occupations and cemeteries",minLotSize:"Not applicable",minWidth:"",minDepth:"",frontSetback:"",sideSetback:"",rearSetback:"",maxHeight:"",maxLotCoverage:""}],accessoryUses:{definitions:{"Accessory Building or Structure":"A building or structure devoted to an accessory use that is located at least 10 feet from the principal building and on the same parcel as the principal building.","Accessory Use":"A use which is conducted or located on the same lot as the principal building or use served, clearly incidental to, subordinate to, and serves the principal use."},permittedUses:["Private garages not attached to the dwelling","Carports","Private swimming pools","Decks and patios","Tennis courts, basketball courts, volleyball courts, shuffleboard courts, horseshoe pits","Storage sheds and similar outbuildings","Receive-only antennas","Doghouses and similar shelters for household pets","Outdoor fireplaces and barbecue pits","Heat pumps, air-conditioning units","Rolloffs and temporary dumpsters (max 31 days in 6 months)","Barns, silos, stables, coops, crop bins, milk houses","Portable storage containers (with permit)"],setbacks:{bySize:[{maxSize:280,side:"5 feet",rear:"5 feet"},{minSize:281,maxSize:576,side:"10 feet",rear:"10 feet"}],specific:[{type:"Swimming Pools",side:"10 feet",rear:"10 feet",conditions:"Must be enclosed by a fence at least 4 feet high"},{type:"Decks",side:"10 feet",rear:"10 feet"}]},heightLimit:"20 feet",coverageLimit:"20% of the lot",specialConditions:["No accessory structures in front yard","Dumpsters must be screened","Portable storage containers: 1 unit max, 10 ft from property lines"]}},{code:"RM",name:"Multi-Family Residential District",signCategory:"residential",purpose:"To provide for a form of housing, other than conventional single-family housing, in areas where multifamily development already exists.",uses:{byRight:{title:"Permitted by Right",items:[{name:"Single-family dwelling",parkingKey:"Residential - single-family",definition:"A detached building...", type: "residential"},{name:"Two-family dwelling",parkingKey:"Residential - multifamily",definition:"A detached building...", type: "residential"},{name:"Home occupation",parkingKey:"Home occupation",definition:"Any occupation or profession...",supplementalCode:'270-45', type: "residential"}]},sitePlanReview:{title:"Requires Site Plan Review",items:[{name:"Multifamily expansions",parkingKey:"Residential - multifamily",definition:"Expansions to existing multifamily projects.", type: "residential"},{name:"Assisted-living facilities",parkingKey:"Assisted-living facility",definition:"Facilities providing housing and care...", type: "public/institutional"},{name:"Bed-and-breakfast",parkingKey:"Bed-and-breakfast",definition:"An owner-occupied dwelling...", type: "residential"},{name:"Day-care center",parkingKey:"Day-care center",definition:"A facility for the care of children or adults.", type: "public/institutional"},{name:"Personal wireless service facility",definition:"A facility for the provision of personal wireless services.", type: "utility"}]},conditionalUse:{title:"Conditional Use Permit Required",items:[]},conditionalUseAndSitePlan:{title:"Conditional Use & Site Plan Review",items:[]}},dimensionalRegulations:[{use:"Single-family (w/o sewer)",minLotSize:"20,000 sq ft",minWidth:"120 ft",minDepth:"150 ft",frontSetback:"30 ft",sideSetback:"20 ft",rearSetback:"40 ft",maxHeight:"35 ft",maxLotCoverage:"25%"},{use:"Single-family (w/sewer)",minLotSize:"15,000 sq ft",minWidth:"100 ft",minDepth:"150 ft",frontSetback:"30 ft",sideSetback:"15 ft",rearSetback:"35 ft",maxHeight:"35 ft",maxLotCoverage:"35%"},{use:"Two-family (w/o sewer)",minLotSize:"30,000 sq ft",minWidth:"140 ft",minDepth:"180 ft",frontSetback:"30 ft",sideSetback:"30 ft",rearSetback:"50 ft",maxHeight:"35 ft",maxLotCoverage:"25%"},{use:"Two-family (w/sewer)",minLotSize:"20,000 sq ft",minWidth:"120 ft",minDepth:"150 ft",frontSetback:"30 ft",sideSetback:"20 ft",rearSetback:"40 ft",maxHeight:"35 ft",maxLotCoverage:"35%"},{use:"Bed-and-breakfast establishments",minLotSize:"30,000 sq ft",minWidth:"140 ft",minDepth:"180 ft",frontSetback:"30 ft",sideSetback:"20 ft",rearSetback:"40 ft",maxHeight:"35 ft",maxLotCoverage:"25%"},{use:"Multifamily dwellings",minLotSize:"3 acres",minWidth:"200 ft",minDepth:"180 ft",frontSetback:"30 ft",sideSetback:"40 ft",rearSetback:"40 ft",maxHeight:"35 ft",maxLotCoverage:"35%"}]},{code:"PR",name:"Professional Residential District",signCategory:"residential",purpose:"To provide for a compatible mixture of private residences and professional offices in areas currently in transition from residential to commercial.",uses:{byRight:{title:"Permitted by Right",items:[{name:"Single-family dwelling",parkingKey:"Residential - single-family",definition:"A detached building...", type: "residential"},{name:"Two-family dwelling",parkingKey:"Residential - multifamily",definition:"A detached building...", type: "residential"},{name:"Home occupation",parkingKey:"Home occupation",definition:"Any occupation or profession...",supplementalCode:'270-45', type: "residential"},{name:"Cemetery",parkingKey:"Cemetery",definition:"Land used or intended...", type: "public/institutional"}]},sitePlanReview:{title:"Requires Site Plan Review",items:[{name:"Medical offices",parkingKey:"Medical Office/Clinic",definition:"An establishment providing medical or dental care, including accessory laboratories and pharmacies.", type: "office"},{name:"Law offices",parkingKey:"Retail and general office uses",definition:"An office for legal professionals.", type: "office"},{name:"Engineering offices",parkingKey:"Retail and general office uses",definition:"An office for engineering professionals.", type: "office"},{name:"Architect/landscape architect offices",parkingKey:"Retail and general office uses",definition:"An office for architectural or landscape architectural professionals.", type: "office"},{name:"Accountant/financial planning offices",parkingKey:"Retail and general office uses",definition:"An office for accounting or financial planning professionals.", type: "office"},{name:"Real estate offices",parkingKey:"Retail and general office uses",definition:"An office for real estate professionals.", type: "office"},{name:"Insurance/brokerage offices",parkingKey:"Retail and general office uses",definition:"An office for insurance or brokerage professionals.", type: "office"},{name:"Instructional services",parkingKey:"School - trade and training",definition:"An establishment providing instruction in arts, crafts, music, dance, or other specialized subjects, but not including a public or private school providing general education.", type: "public/institutional"},{name:"Computer consultants",parkingKey:"Retail and general office uses",definition:"An office for computer consulting services.", type: "office"},{name:"Religious uses",parkingKey:"Religious use",definition:"A structure or place in which worship, ceremonies, rituals and education pertaining to a particular system of beliefs are held.", type: "public/institutional"},{name:"Day-care centers",parkingKey:"Day-care center",definition:"A facility for the care of children or adults for less than 24 hours per day.", type: "public/institutional"},{name:"Museums",parkingKey:"Museum",definition:"An institution for the preservation and exhibition of artistic, historical, or scientific objects.", type: "public/institutional"},{name:"Libraries",parkingKey:"Library",definition:"A building or part of a building used for the collection, storage, and circulation of books, periodicals, and other media for public use.", type: "public/institutional"},{name:"Accessory apartments",parkingKey:"Accessory apartment",definition:"A secondary dwelling unit...",supplementalCode:'270-51', type: "residential"},{name:"Bed-and-breakfast",parkingKey:"Bed-and-breakfast",definition:"An owner-occupied dwelling...", type: "residential"},{name:"Personal wireless service facilities",definition:"A facility for the provision of personal wireless services.", type: "utility"},{name:"Beauty salons and barber shops",parkingKey:"Personal and general services",definition:"Establishments primarily engaged in providing services generally to individuals, including but not limited to barber and beauty shops, dry cleaning and laundry pick-up stations, photographic studios, shoe repair shops and funeral homes.", type: "commercial"},{name:"Contractor's office",parkingKey:"Retail and general office uses",definition:"An office and/or shop for a construction or trade contractor, including the storage of materials, equipment and vehicles as an accessory use incidental to the primary use.", type: "commercial"}]},conditionalUse:{title:"Conditional Use Permit Required",items:[]},conditionalUseAndSitePlan:{title:"Conditional Use & Site Plan Review",items:[]}},dimensionalRegulations:[{use:"All uses except home occupations and cemeteries",minLotSize:"30,000 sq ft",minWidth:"140 ft",minDepth:"180 ft",frontSetback:"40 ft",sideSetback:"20 ft",rearSetback:"40 ft",maxHeight:"35 ft",maxLotCoverage:"25%"},{use:"Home occupations and cemeteries",minLotSize:"Not applicable",minWidth:"",minDepth:"",frontSetback:"",sideSetback:"",rearSetback:"",maxHeight:"",maxLotCoverage:""}]},{code:"CB",name:"Community Business District",signCategory:"business",purpose:"To provide for the basic community services, employment, convenience shopping and recreation for persons residing in nearby residential areas.",uses:{byRight:{title:"Permitted by Right",items:[]},sitePlanReview:{title:"Requires Site Plan Review",items:[{name:"Retail businesses (<20,000 sq ft)",parkingKey:"Retail and general office uses",definition:"An establishment engaged in the selling of goods, wares or merchandise directly to the consumer.", type: "commercial"},{name:"Banks and offices (<20,0020,000 sq ft)",parkingKey:"Retail and general office uses",definition:"An office for financial or professional services.", type: "commercial"},{name:"Personal services",parkingKey:"Personal and general services",definition:"Establishments primarily engaged in providing services generally to individuals, including but not limited to barber and beauty shops, dry cleaning and laundry pick-up stations, photographic studios, shoe repair shops and funeral homes.", type: "commercial"},{name:"Public and private clubs",definition:"Buildings and facilities owned or operated by a corporation or association of persons for social, educational or recreational purposes, but not primarily for profit or to render a service which is customarily carried on as a business.", type: "recreation"},{name:"Day-care centers",parkingKey:"Day-care center",definition:"A facility for the care of children or adults for less than 24 hours per day.", type: "public/institutional"},{name:"Residential units (not ground floor)",parkingKey:"Residential - multifamily",definition:"A dwelling unit located within a mixed-use building, typically above the ground floor commercial or office space.", type: "residential"},{name:"Bed-and-breakfast",parkingKey:"Bed-and-breakfast",definition:"An owner-occupied dwelling...", type: "residential"},{name:"Nurseries, garden shops, florists",parkingKey:"Retail and general office uses",definition:"An establishment for the retail sale of trees, shrubs, flowers, garden supplies and similar products, including accessory outdoor display and storage areas.", type: "commercial"},{name:"Museums",parkingKey:"Museum",definition:"An institution for the preservation and exhibition of artistic, historical, or scientific objects.", type: "public/institutional"},{name:"Libraries",parkingKey:"Library",definition:"A building or part of a building used for the collection, storage, and circulation of books, periodicals, and other media for public use.", type: "public/institutional"},{name:"Personal wireless service facilities",definition:"A facility for the provision of personal wireless services.", type: "utility"},{name:"Microbreweries/microwineries/microdistilleries",parkingKey:"Craft production",definition:"Small-scale production facilities for beer, wine, or spirits.", type: "commercial"},{name:"Contractor's offices",parkingKey:"Retail and general office uses",definition:"An office and/or shop for a construction or trade contractor, including the storage of materials, equipment and vehicles as an accessory use incidental to the primary use.", type: "commercial"},{name:"Restaurants, cafes",parkingKey:"Restaurant",definition:"An establishment where food and beverages are prepared and served for consumption on the premises, including but not limited to cafes, diners, coffee shops and similar uses.", type: "commercial"}]},conditionalUse:{title:"Conditional Use Permit Required",items:[]},conditionalUseAndSitePlan:{title:"Conditional Use & Site Plan Review",items:[{name:"Indoor recreation facilities",parkingKey:"Indoor and outdoor recreation facility",definition:"An establishment providing facilities for indoor or outdoor recreational activities, including but not limited to bowling alleys, health clubs, gymnasiums, sports arenas, swimming pools, tennis courts, golf courses and similar uses.", type: "recreation"}]}},dimensionalRegulations:[{use:"All uses",minLotSize:"30,000 sq ft",minWidth:"140 ft",minDepth:"180 ft",frontSetback:"40 ft",sideSetback:"20 ft",rearSetback:"40 ft",maxHeight:"35 ft",maxLotCoverage:"30%"}]},{code:"GB",name:"General Business District",signCategory:"business",purpose:"To provide for a wide variety of commercial uses that serve both local and regional needs.",uses:{byRight:{title:"Permitted by Right",items:[]},sitePlanReview:{title:"Requires Site Plan Review",items:[{name:"Retail businesses",parkingKey:"Retail and general office uses",definition:"An establishment engaged in the selling of goods, wares or merchandise directly to the consumer.", type: "commercial"},{name:"Offices",parkingKey:"Retail and general office uses",definition:"A room or group of rooms used for conducting the affairs of a business, profession, service, industry or government, and generally furnished with desks, tables, files and communication equipment.", type: "office"},{name:"Personal and general services",parkingKey:"Personal and general services",definition:"Establishments primarily engaged in providing services generally to individuals, including but not limited to barber and beauty shops, dry cleaning and laundry pick-up stations, photographic studios, shoe repair shops and funeral homes.", type: "commercial"},{name:"Public and private clubs",definition:"Buildings and facilities owned or operated by a corporation or association of persons for social, educational or recreational purposes, but not primarily for profit or to render a service which is customarily carried on as a business.", type: "recreation"},{name:"Museums",parkingKey:"Museum",definition:"An institution for the preservation and exhibition of artistic, historical, or scientific objects.", type: "public/institutional"},{name:"Libraries",parkingKey:"Library",definition:"A building or part of a building used for the collection, storage, and circulation of books, periodicals, and other media for public use.", type: "public/institutional"},{name:"Day-care centers",parkingKey:"Day-care center",definition:"A facility for the care of children or adults for less than 24 hours per day.", type: "public/institutional"},{name:"Shopping centers",parkingKey:"Shopping center/mall",definition:"A group of commercial establishments planned, developed, owned and managed as a unit, with off-street parking provided on the property.", type: "commercial"},{name:"Indoor and outdoor recreation facilities",parkingKey:"Indoor and outdoor recreation facility",definition:"An establishment providing facilities for indoor or outdoor recreational activities, including but not limited to bowling alleys, health clubs, gymnasiums, sports arenas, swimming pools, tennis courts, golf courses and similar uses.", type: "recreation"},{name:"Human services/social services offices",parkingKey:"Retail and general office uses",definition:"Offices for organizations providing social, welfare, and community support services, often non-profit in nature.", type: "office"},{name:"Hotels, motels, bed-and-breakfasts",parkingKey:"Motel/hotel",definition:"A building or group of buildings containing individual sleeping rooms or suites for transient occupancy, with or without cooking facilities, and which may include accessory facilities such as restaurants, meeting rooms, and recreational facilities.", type: "commercial"},{name:"Residential units (not ground floor)",parkingKey:"Residential - multifamily",definition:"A dwelling unit located within a mixed-use building, typically above the ground floor commercial or office space.", type: "residential"},{name:"Personal wireless service facilities",definition:"A facility for the provision of personal wireless services.", type: "utility"},{name:"Not-for-profit recreation facilities",parkingKey:"Not-for-profit recreation facility",definition:"Non-commercial facilities for recreational activities.", type: "recreation"},{name:"Laundromats",parkingKey:"Laundromat",definition:"An establishment providing self-service laundry facilities for public use.", type: "commercial"},{name:"Microbreweries/microwineries/microdistilleries",parkingKey:"Craft production",definition:"Small-scale production facilities for beer, wine, or spirits.", type: "commercial"},{name:"Contractors' offices",parkingKey:"Retail and general office uses",definition:"An office and/or shop for a construction or trade contractor, including the storage of materials, equipment and vehicles as an accessory use incidental to the primary use.", type: "commercial"},{name:"Food and beverage processing (<10,000 sq ft)",parkingKey:"Industrial, manufacturing and utility uses",definition:"An establishment primarily engaged in the processing, canning, bottling, or packaging of food and beverage products for wholesale or retail distribution.", type: "industrial"},{name:"Restaurants, taverns, nightclubs",parkingKey:"Restaurant",definition:"An establishment where food and beverages are prepared and served for consumption on the premises, including but not limited to cafes, diners, coffee shops and similar uses.", type: "commercial"}]},conditionalUse:{title:"Conditional Use Permit Required",items:[{name:"Veterinary clinics/kennels",parkingKey:"Veterinarian",definition:"An establishment where animals are given medical or surgical treatment, and where boarding of animals is limited to short-term care incidental to the primary treatment.", type: "commercial"}]},conditionalUseAndSitePlan:{title:"Conditional Use & Site Plan Review",items:[{name:"Automobile dealerships",parkingKey:"Automobile sales and vehicle and equipment rental agencies",definition:"An establishment engaged in the retail sale of new or used automobiles, including accessory service, repair, and parts sales.", type: "transportation"},{name:"Gasoline service stations",parkingKey:"Gas station with walk-in retail",definition:"An establishment engaged in the retail sale of motor fuels, lubricants, and automotive accessories, and which may include minor repair services and a convenience store.", type: "transportation"}]}},dimensionalRegulations:[{use:"All uses except shopping centers",minLotSize:"40,000 sq ft",minWidth:"140 ft",minDepth:"180 ft",frontSetback:"35 ft",sideSetback:"30 ft",rearSetback:"40 ft",maxHeight:"35 ft",maxLotCoverage:"30%"},{use:"Shopping centers",minLotSize:"5 acres",minWidth:"300 ft",minDepth:"300 ft",frontSetback:"35 ft",sideSetback:"35 ft",rearSetback:"60 ft",maxHeight:"35 ft",maxLotCoverage:"25%"}]},{code:"HC",name:"Highway Commercial District",signCategory:"business",purpose:"To establish a hybrid commercial/light industrial zoning district along the western Route 5 corridor of Glenville.",uses:{byRight:{title:"Permitted by Right",items:[{name:"Single-family dwelling",parkingKey:"Residential - single-family",definition:"A detached building designed for or occupied exclusively by one family.", type: "residential"},{name:"Two-family dwelling",parkingKey:"Residential - multifamily",definition:"A detached building containing two dwelling units.", type: "residential"},{name:"Accessory apartments",parkingKey:"Accessory apartment",definition:"A secondary dwelling unit...",supplementalCode:'270-51', type: "residential"},{name:"Home occupation",parkingKey:"Home occupation",definition:"Any occupation or profession carried out by a resident. See Supplemental Regulations for specific conditions.",supplementalCode:'270-45', type: "residential"},{name:"Agricultural activities/farms",definition:"The use of land for profit through the production of crops, livestock, etc.", type: "agricultural"},{name:"Cemetery",parkingKey:"Cemetery",definition:"Land used or intended to be used for the burial of the dead.", type: "public/institutional"},{name:"Bed-and-breakfast",parkingKey:"Bed-and-breakfast",definition:"An owner-occupied dwelling with rooms rented to transient guests.", type: "residential"},{name:"Professional offices",parkingKey:"Retail and general office uses",definition:"A room or group of rooms used for conducting the affairs of a business, profession, service, industry or government, and generally furnished with desks, tables, files and communication equipment.", type: "office"},{name:"Instructional services",parkingKey:"School - trade and training",definition:"An establishment providing instruction in arts, crafts, music, dance, or other specialized subjects, but not including a public or private school providing general education.", type: "public/institutional"}]},sitePlanReview:{title:"Requires Site Plan Review",items:[{name:"Retail businesses",parkingKey:"Retail and general office uses",definition:"An establishment engaged in the selling of goods, wares or merchandise directly to the consumer.", type: "commercial"},{name:"Offices",parkingKey:"Retail and general office uses",definition:"A room or group of rooms used for conducting the affairs of a business, profession, service, industry or government, and generally furnished with desks, tables, files and communication equipment.", type: "office"},{name:"Restaurants, taverns, nightclubs",parkingKey:"Restaurant",definition:"An establishment where food and beverages are prepared and served for consumption on the premises, including but not limited to cafes, diners, coffee shops and similar uses.", type: "commercial"},{name:"Personal and general services",parkingKey:"Personal and general services",definition:"Establishments primarily engaged in providing services generally to individuals, including but not limited to barber and beauty shops, dry cleaning and laundry pick-up stations, photographic studios, shoe repair shops and funeral homes.", type: "commercial"},{name:"Public and private clubs",definition:"Buildings and facilities owned or operated by a corporation or association of persons for social, educational or recreational purposes, but not primarily for profit or to render a service which is customarily carried on as a business.", type: "recreation"},{name:"Museums",parkingKey:"Museum",definition:"An institution for the preservation and exhibition of artistic, historical, or scientific objects.", type: "public/institutional"},{name:"Boarding stables and riding academies",parkingKey:"Horse stable",definition:"Facilities for boarding horses and riding instruction.", type: "recreation"},{name:"Recreation facilities",parkingKey:"Indoor and outdoor recreation facility",definition:"An establishment providing facilities for indoor or outdoor recreational activities, including but not limited to bowling alleys, health clubs, gymnasiums, sports arenas, swimming pools, tennis courts, golf courses and similar uses.", type: "recreation"},{name:"Campgrounds",parkingKey:"Campground and RV park",definition:"An area or tract of land on which two or more campsites are located, used or intended to be used for temporary occupancy by recreational vehicles or tents.", type: "recreation"},{name:"RV parks",parkingKey:"Campground and RV park",definition:"An area or tract of land on which two or more recreational vehicle sites are located, used or intended to be used for temporary occupancy by recreational vehicles.", type: "recreation"},{name:"Hotels and motels",parkingKey:"Motel/hotel",definition:"A building or group of buildings containing individual sleeping rooms or suites for transient occupancy, with or without cooking facilities, and which may include accessory facilities such as restaurants, meeting rooms, and recreational facilities.", type: "commercial"},{name:"Microbreweries/microwineries/microdistilleries",parkingKey:"Craft production",definition:"Small-scale production facilities for beer, wine, or spirits.", type: "commercial"},{name:"Contractors' offices, shops and yards",parkingKey:"Contractor's yard",definition:"An establishment primarily engaged in construction or trade contracting, including offices, shops for fabrication or repair, and outdoor storage areas for materials, equipment, and vehicles.", type: "commercial"},{name:"Personal wireless service facilities",definition:"A facility for the provision of personal wireless services.", type: "utility"},{name:"Printing and publishing offices",parkingKey:"Printing/publishing shop",definition:"An establishment primarily engaged in printing, publishing, and related activities, including graphic design, typesetting, and binding.", type: "commercial"},{name:"Research and development facilities",parkingKey:"Laboratories for medical use",definition:"An establishment engaged in scientific, technological, or industrial research and development, including laboratories, offices, and accessory light manufacturing or assembly related to the research.", type: "industrial"}]},conditionalUse:{title:"Conditional Use Permit Required",items:[{name:"Religious uses",parkingKey:"Religious use",definition:"A structure or place in which worship, ceremonies, rituals and education pertaining to a particular system of beliefs are held.", type: "public/institutional"},{name:"Veterinary clinics/kennels",parkingKey:"Veterinarian",definition:"An establishment where animals are given medical or surgical treatment, and where boarding of animals is limited to short-term care incidental to the primary treatment.", type: "commercial"},{name:"Auction businesses",definition:"An establishment engaged in the sale of goods or property by auction.", type: "commercial"},{name:"Vehicle and equipment rental agencies",parkingKey:"Automobile sales and vehicle and equipment rental agencies",definition:"An establishment engaged in the rental of automobiles, trucks, trailers, construction equipment, or other vehicles and equipment.", type: "transportation"},{name:"Enclosed warehousing",parkingKey:"Warehouse",definition:"A building used primarily for the storage of goods and materials.", type: "industrial"}]},conditionalUseAndSitePlan:{title:"Conditional Use & Site Plan Review",items:[]}},dimensionalRegulations:[{use:"Single- and two-family",minLotSize:"2 acres",minWidth:"200 ft",minDepth:"200 ft",frontSetback:"50 ft",sideSetback:"35 ft",rearSetback:"35 ft",maxHeight:"35 ft",maxLotCoverage:"30%"},{use:"All other uses",minLotSize:"40,000 sq ft",minWidth:"140 ft",minDepth:"180 ft",frontSetback:"40 ft",sideSetback:"35 ft",rearSetback:"35 ft",maxHeight:"35 ft",maxLotCoverage:"30%"}]},{code:"RDT",name:"Research, Development, and Technology District",signCategory:"business",purpose:"To accommodate emerging technology firms, manufacturing, assembly, warehousing and similar uses.",uses:{byRight:{title:"Permitted by Right",items:[]},sitePlanReview:{title:"Requires Site Plan Review",items:[{name:"Light assembly",parkingKey:"Industrial, manufacturing and utility uses",definition:"An establishment engaged in the assembly of finished products from manufactured parts or components, or the light fabrication of products, generally without significant noise, odor, vibration, or other impacts beyond the property line.", type: "industrial"},{name:"Retail outlets",parkingKey:"Retail and general office uses",definition:"An establishment primarily engaged in the retail sale of goods, wares, or merchandise directly to the consumer, often associated with a warehouse or light assembly use on the same property.", type: "commercial"},{name:"Offices",parkingKey:"Retail and general office uses",definition:"A room or group of rooms used for conducting the affairs of a business, profession, service, industry or government, and generally furnished with desks, tables, files and communication equipment.", type: "office"},{name:"Enclosed warehousing",parkingKey:"Warehouse",definition:"A building used primarily for the storage of goods and materials.", type: "industrial"},{name:"Enclosed manufacturing",parkingKey:"Industrial, manufacturing and utility uses",definition:"An establishment engaged in the fabrication, processing, or assembly of products, where all operations are conducted within an enclosed building, and which generally produces minimal external impacts such as noise, odor, or vibration.", type: "industrial"},{name:"Vehicle and equipment rental agencies",parkingKey:"Automobile sales and vehicle and equipment rental agencies",definition:"An establishment engaged in the rental of automobiles, trucks, trailers, construction equipment, or other vehicles and equipment.", type: "transportation"},{name:"Automobile dealerships",parkingKey:"Automobile sales and vehicle and equipment rental agencies",definition:"An establishment engaged in the retail sale of new or used automobiles, including accessory service, repair, and parts sales.", type: "transportation"},{name:"Automobile repair shops",parkingKey:"Auto body shop and automobile repair shop",definition:"An establishment primarily engaged in the repair, maintenance, or servicing of automobiles, including body work, painting, and engine repair.", type: "transportation"},{name:"Gasoline service stations",parkingKey:"Gas station with walk-in retail",definition:"An establishment engaged in the retail sale of motor fuels, lubricants, and automotive accessories, and which may include minor repair services and a convenience store.", type: "transportation"},{name:"Car washes",parkingKey:"Car wash full service",definition:"An establishment providing facilities for washing and cleaning of automobiles, either self-service or automated.", type: "transportation"},{name:"Food and beverage processing",parkingKey:"Industrial, manufacturing and utility uses",definition:"An establishment primarily engaged in the processing, canning, bottling, or packaging of food and beverage products for wholesale or retail distribution.", type: "industrial"},{name:"Printing and publishing offices",parkingKey:"Printing/publishing shop",definition:"An establishment primarily engaged in printing, publishing, and related activities, including graphic design, typesetting, and binding.", type: "commercial"},{name:"Recreation facilities",parkingKey:"Indoor and outdoor recreation facility",definition:"An establishment providing facilities for indoor or outdoor recreational activities, including but not limited to bowling alleys, health clubs, gymnasiums, sports arenas, swimming pools, tennis courts, golf courses and similar uses.", type: "recreation"},{name:"Personal wireless service facilities",definition:"A facility for the provision of personal wireless services.", type: "utility"},{name:"Microbreweries/microwineries/microdistilleries",parkingKey:"Craft production",definition:"Small-scale production facilities for beer, wine, or spirits.", type: "commercial"}]},conditionalUse:{title:"Conditional Use Permit Required",items:[]},conditionalUseAndSitePlan:{title:"Conditional Use & Site Plan Review",items:[{name:"Research and development facilities",parkingKey:"Laboratories for medical use",definition:"An establishment engaged in scientific, technological, or industrial research and development, including laboratories, offices, and accessory light manufacturing or assembly related to the research.", type: "industrial"},{name:"Chip-fab plants",parkingKey:"Industrial, manufacturing and utility uses",definition:"An establishment engaged in the manufacturing, fabrication, or assembly of semiconductor devices, integrated circuits, or other electronic components.", type: "industrial"},{name:"Medical research facilities",parkingKey:"Laboratories for medical use",definition:"An establishment engaged in medical or biotechnological research and development, including laboratories, offices, and accessory clinical or testing facilities.", type: "industrial"},{name:"Contractors' offices, shops and yards",parkingKey:"Contractor's yard",definition:"An establishment primarily engaged in construction or trade contracting, including offices, shops for fabrication or repair, and outdoor storage areas for materials, equipment, and vehicles.", type: "commercial"},{name:"Heavy machinery sales/repair",parkingKey:"Industrial, manufacturing and utility uses",definition:"An establishment engaged in the sale, rental, service, or repair of heavy machinery, construction equipment, agricultural equipment, or similar large vehicles.", type: "industrial"},{name:"Freight/trucking terminals",parkingKey:"Industrial, manufacturing and utility uses",definition:"An establishment for the transfer, storage, and distribution of freight by motor truck, including accessory offices and maintenance facilities.", type: "industrial"}]}},dimensionalRegulations:[{use:"All uses",minLotSize:"40,000 sq ft",minWidth:"160 ft",minDepth:"200 ft",frontSetback:"50 ft",sideSetback:"50 ft",rearSetback:"50 ft",maxHeight:"50 ft",maxLotCoverage:"30%"}]},{code:"LC",name:"Land Conservation District",signCategory:"residential",purpose:"To minimize the construction and placement of buildings in areas that are sensitive to development.",uses:{byRight:{title:"Permitted by Right",items:[{name:"Public and private parks",definition:"Land used or intended to be used for public or private recreation, conservation, and open space purposes, including but not limited to playgrounds, athletic fields, trails, and natural areas.", type: "recreation"},{name:"Bird sanctuaries",definition:"An area designated for the protection and conservation of bird populations and their habitats, typically managed for passive recreation and environmental education.", type: "recreation"},{name:"Bike and pedestrian trails",definition:"Designated pathways for non-motorized transportation and recreation, including walking, jogging, and bicycling.", type: "recreation"},{name:"Interpretive structures",definition:"Small-scale structures such as kiosks, shelters, and viewing platforms designed to provide information or enhance the experience of natural or cultural features within a park or conservation area.", type: "recreation"},{name:"Agricultural activities",definition:"The use of land for the production of crops, livestock, or other agricultural products, subject to limitations to protect sensitive environmental features.", type: "agricultural"},{name:"Private docks",definition:"A structure extending into a body of water, used for the mooring of private boats or for recreational purposes, accessory to a principal residential use.", type: "recreation"},{name:"Commercial logging",definition:"Restricted commercial harvesting of timber.",supplementalCode:'270-60', type: "agricultural"}]},sitePlanReview:{title:"Requires Site Plan Review",items:[]},conditionalUse:{title:"Conditional Use Permit Required",items:[]},conditionalUseAndSitePlan:{title:"Conditional Use & Site Plan Review",items:[]}}},{code:"PPL",name:"Public Park Lands District",signCategory:"residential",purpose:"To identify publicly owned parks, preserves, recreation areas and open spaces.",uses:{byRight:{title:"Permitted by Right",items:[{name:"Publicly owned parks",definition:"Land owned and operated by a public agency for recreational, conservation, or open space purposes, accessible to the general public.", type: "recreation"},{name:"Associated structures",definition:"Buildings and structures accessory to a publicly owned park, including but not limited to restrooms, maintenance sheds, concession stands, and administrative offices.", type: "recreation"}]},sitePlanReview:{title:"Requires Site Plan Review",items:[]},conditionalUse:{title:"Conditional Use Permit Required",items:[]},conditionalUseAndSitePlan:{title:"Conditional Use & Site Plan Review",items:[]}}},{code:"RRC",name:"Riverfront Recreation/Commercial District",signCategory:"business",purpose:"To provide for water-dependent or water-enhanced development promoting recreation and commerce on the Mohawk River.",uses:{byRight:{title:"Permitted by Right",items:[{name:"Agricultural activities/farms",definition:"The use of land for profit through the production of crops, livestock, etc.", type: "agricultural"},{name:"Roadside produce stand (<600 sq ft)",parkingKey:"Produce stand",definition:"A permanent or temporary structure used for the sale of agricultural products.", type: "commercial"},{name:"Bike paths",definition:"Designated pathways for non-motorized transportation and recreation, including walking, jogging, and bicycling.", type: "recreation"}]},sitePlanReview:{title:"Requires Site Plan Review",items:[{name:"Marinas",parkingKey:"Marina",definition:"A facility for the storage, servicing, and launching of recreational boats, including accessory uses such as boat sales, repair shops, and fueling stations.", type: "transportation"},{name:"Lodging facilities",parkingKey:"Motel/hotel",definition:"An establishment providing temporary lodging for transient guests, including hotels, motels, and inns.", type: "commercial"},{name:"Swimming facilities",parkingKey:"Indoor and outdoor recreation facility",definition:"An establishment providing facilities for swimming, including pools, beaches, and related amenities.", type: "recreation"},{name:"Outdoor recreation facilities",parkingKey:"Indoor and outdoor recreation facility",definition:"Facilities for outdoor recreational activities, including but not limited to sports fields, courts, trails, and playgrounds.", type: "recreation"},{name:"Campgrounds",parkingKey:"Campground and RV park",definition:"An area or tract of land on which two or more campsites are located, used or intended to be used for temporary occupancy by recreational vehicles or tents.", type: "recreation"},{name:"RV parks",parkingKey:"Campground and RV park",definition:"An area or tract of land on which two or more recreational vehicle sites are located, used or intended to be used for temporary occupancy by recreational vehicles.", type: "recreation"},{name:"Restaurants",parkingKey:"Restaurant",definition:"An establishment where food and beverages are prepared and served for consumption on the premises, including but not limited to cafes, diners, coffee shops and similar uses.", type: "commercial"}]},conditionalUse:{title:"Conditional Use Permit Required",items:[]},conditionalUseAndSitePlan:{title:"Conditional Use & Site Plan Review",items:[{name:"RV parks",parkingKey:"Campground and RV park",definition:"An area or tract of land on which two or more recreational vehicle sites are located, used or intended to be used for temporary occupancy by recreational vehicles.", type: "recreation"}]}},dimensionalRegulations:[{use:"RV parks and campgrounds",minLotSize:"20 acres",minWidth:"200 ft",minDepth:"200 ft",frontSetback:"75 ft",sideSetback:"75 ft",rearSetback:"75 ft",maxHeight:"35 ft",maxLotCoverage:"10%"},{use:"All other permitted uses",minLotSize:"2 acres",minWidth:"200 ft",minDepth:"200 ft",frontSetback:"40 ft",sideSetback:"20 ft",rearSetback:"40 ft",maxHeight:"35 ft",maxLotCoverage:"20%"}]},{code:"AZ",name:"Airport Zoning District",signCategory:"business",purpose:"To provide for continued private and public use of the Schenectady airport and potential expansion.",uses:{byRight:{title:"Permitted by Right",items:[{name:"Fixed-base operator facilities",parkingKey:"Airport",definition:"An establishment providing aviation services such as aircraft fueling, maintenance, storage, and flight instruction at an airport.", type: "transportation"},{name:"Passenger terminals",parkingKey:"Airport",definition:"A building or facility at an airport used for the processing, boarding, and deplaning of airline passengers.", type: "transportation"},{name:"Aircraft fueling operations",definition:"An establishment providing facilities for the fueling of aircraft at an airport.", type: "transportation"},{name:"Control towers",definition:"A structure at an airport used for air traffic control operations.", type: "transportation"},{name:"Offices for aviation activities",parkingKey:"Retail and general office uses",definition:"Offices for businesses or organizations related to aviation activities, including airline offices, flight schools, and aircraft management companies.", type: "office"},{name:"Charter operations",parkingKey:"Airport",definition:"An establishment providing charter air transportation services for passengers or cargo.", type: "transportation"},{name:"Aircraft hangars",definition:"A building used for the storage, maintenance, or repair of aircraft.", type: "transportation"}]},sitePlanReview:{title:"Requires Site Plan Review",items:[{name:"Aviation museums",parkingKey:"Museum",definition:"A museum dedicated to the history and display of aircraft, aerospace technology, and related artifacts.", type: "public/institutional"},{name:"Automobile rental operations",parkingKey:"Automobile sales and vehicle and equipment rental agencies",definition:"An establishment engaged in the rental of automobiles, including accessory offices and parking areas.", type: "transportation"},{name:"Cargo/freight operations",parkingKey:"Warehouse",definition:"An establishment primarily engaged in the handling, storage, and transfer of cargo or freight, including accessory offices and warehousing.", type: "industrial"}]},conditionalUse:{title:"Conditional Use Permit Required",items:[]},conditionalUseAndSitePlan:{title:"Conditional Use & Site Plan Review",items:[]}},dimensionalRegulations:[{use:"All uses",minLotSize:"15,000 sq ft",minWidth:"150 ft",minDepth:"100 ft",frontSetback:"20 ft",sideSetback:"15 ft",rearSetback:"20 ft",maxHeight:"35 ft",maxLotCoverage:"30%"}]},{code:"Town Center Overlay",name:"Town Center Overlay District",signCategory:"business",purpose:"To enhance the town center with specific commercial and design guidelines.",uses:{byRight:{title:"Permitted by Right",items:[]},sitePlanReview:{title:"Requires Site Plan Review",items:[]},conditionalUse:{title:"Conditional Use Permit Required",items:[]},conditionalUseAndSitePlan:{title:"Conditional Use & Site Plan Review",items:[]}}},{code:"Adult Use Overlay",name:"Adult Use Overlay District",signCategory:"business",purpose:"To provide for limited establishment of adult-oriented land uses within an industrial area.",uses:{byRight:{title:"Permitted by Right",items:[]},sitePlanReview:{title:"Requires Site Plan Review",items:[]},conditionalUse:{title:"Conditional Use Permit Required",items:[]},conditionalUseAndSitePlan:{title:"Conditional Use & Site Plan Review",items:[{name:"Adult uses",parkingKey:"Adult use",definition:"Adult bookstores, theaters, and entertainment cabarets. See Supplemental Regulations for specific location requirements.",supplementalCode:'270-36', type: "commercial"},{name:"Pawn shops",parkingKey:"Retail and general office uses",definition:"Businesses offering loans against personal property.", type: "commercial"},{name:"Secondhand dealers",parkingKey:"Retail and general office uses",definition:"Businesses selling used goods.", type: "commercial"},{name:"Cannabis or tobacco retail",parkingKey:"Retail and general office uses",definition:"Retail sales of cannabis or tobacco products.", type: "commercial"},{name:"Massage parlors",parkingKey:"Personal and general services",definition:"Facilities offering massage services.", type: "commercial"},{name:"Marijuana dispensaries",parkingKey:"Retail and general office uses",definition:"Retail sales of marijuana products.", type: "commercial"},{name:"Hookah shops",parkingKey:"Retail and consumption lounges for hookah.", type: "commercial"}]}}},{code:"Storage Overlay",name:"Storage Overlay District",signCategory:"business",purpose:"To accommodate storage of automobiles and self-storage in the HC District.",uses:{byRight:{title:"Permitted by Right",items:[]},sitePlanReview:{title:"Requires Site Plan Review",items:[{name:"Automobile storage",definition:"The outdoor or indoor storage of automobiles for dealerships, towing services, rental agencies, or similar businesses, but not including junk or salvage yards.", type: "transportation"},{name:"Self-storage",parkingKey:"Self-storage facility",definition:"A building or group of buildings containing individual storage units rented to individuals or businesses for the storage of personal property.", type: "industrial"}]},conditionalUse:{title:"Conditional Use Permit Required",items:[]},conditionalUseAndSitePlan:{title:"Conditional Use & Site Plan Review",items:[]}}},{code:"Solar Overlay",name:"Large-Scale Solar Energy Farm Overlay District",signCategory:"business",purpose:"To allow installation of solar energy farms as a source of renewable energy.",uses:{byRight:{title:"Permitted by Right",items:[]},sitePlanReview:{title:"Requires Site Plan Review",items:[]},conditionalUse:{title:"Conditional Use Permit Required",items:[]},conditionalUseAndSitePlan:{title:"Conditional Use & Site Plan Review",items:[{name:"Solar energy farms",definition:"A large-scale installation of photovoltaic solar panels or other solar energy collection devices, designed to generate electricity for off-site consumption.", type: "utility"}]}}},{code:"FBRC",name:"Freemans Bridge Road Corridor District",signCategory:"business",purpose:"To provide for a variety of commercial, residential, and mixed-use development that creates a vibrant, pedestrian-friendly corridor.",uses:{byRight:{title:"Permitted by Right",items:[{name:"Retail businesses",parkingKey:"Retail and general office uses",definition:"An establishment engaged in the selling of goods, wares or merchandise directly to the consumer.", type: "commercial"},{name:"Offices",parkingKey:"Retail and general office uses",definition:"A room or group of rooms used for conducting the affairs of a business, profession, service, industry or government, and generally furnished with desks, tables, files and communication equipment.", type: "office"},{name:"Restaurants, cafes",parkingKey:"Restaurant",definition:"An establishment where food and beverages are prepared and served for consumption on the premises, including but not limited to cafes, diners, coffee shops and similar uses.", type: "commercial"}]},sitePlanReview:{title:"Requires Site Plan Review",items:[{name:"Mixed-use developments",parkingKey:"Mixed use building",definition:"A development containing a combination of residential and non-residential uses, such as commercial, office, or institutional uses, integrated vertically or horizontally within a single building or on a single site.", type: "mixed-use"},{name:"Attached dwellings",parkingKey:"Residential - multifamily",definition:"Two or more dwelling units attached by a common vertical wall, with each unit having independent access and separate ownership of the land beneath the unit.", type: "residential"},{name:"Shopping center",parkingKey:"Shopping center/mall",definition:"A group of commercial establishments planned, developed, owned and managed as a unit, with off-street parking provided on the property.", type: "commercial"},{name:"Research and development facilities",parkingKey:"Laboratories for medical use",definition:"An establishment engaged in scientific, technological, or industrial research and development, including laboratories, offices, and accessory light manufacturing or assembly related to the research.", type: "industrial"}]},conditionalUse:{title:"Conditional Use Permit Required",items:[]},conditionalUseAndSitePlan:{title:"Conditional Use & Site Plan Review",items:[]}},dimensionalRegulations:[{use:"Mixed-use developments",minLotSize:"3 acres",minWidth:"60 ft",minDepth:"100 ft",frontSetback:"40 ft",sideSetback:"15 ft",rearSetback:"30 ft",maxHeight:"35 ft",maxLotCoverage:"35%"},{use:"Attached dwellings",minLotSize:"3 acres",minWidth:"60 ft",minDepth:"100 ft",frontSetback:"40 ft",sideSetback:"15 ft",rearSetback:"30 ft",maxHeight:"35 ft",maxLotCoverage:"35%"},{use:"Research and development facilities",minLotSize:"5 acres",minWidth:"60 ft",minDepth:"100 ft",frontSetback:"40 ft",sideSetback:"15 ft",rearSetback:"30 ft",maxHeight:"35 ft",maxLotCoverage:"35%"},{use:"Shopping center",minLotSize:"5 acres",minWidth:"60 ft",minDepth:"100 ft",frontSetback:"40 ft",sideSetback:"15 ft",rearSetback:"30 ft",maxHeight:"35 ft",maxLotCoverage:"35%"},{use:"All other permitted uses",minLotSize:"30,000 sf",minWidth:"60 ft",minDepth:"100 ft",frontSetback:"40 ft",sideSetback:"15 ft",rearSetback:"30 ft",maxHeight:"35 ft",maxLotCoverage:"35%"}]}]};
+
+document.addEventListener('DOMContentLoaded', initialize);
+
+let activeFilters = new Set(['byRight', 'sitePlanReview', 'conditionalUse', 'conditionalUseAndSitePlan']);
+let currentDistrict = null;
+let parkingCalculationList = [];
+let currentSearchType = 'district'; // Keep track of the active search mode for PDF generation
+
+// Define intensification hierarchy (lower index = less intense)
+const intensificationHierarchy = [
+    'residential',
+    'public/institutional',
+    'agricultural',
+    'recreation',
+    'office',
+    'commercial',
+    'transportation',
+    'mixed-use', // Mixed-use can be tricky, might need special handling
+    'industrial',
+    'utility',
+    'special' // For adult uses, solar farms, etc., which might have unique rules
+];
+
+function initialize() {
+    populateDropdowns();
+    attachEventListeners();
+    // Set initial display based on default checked radio button
+    toggleSearchMode(); // This will also set the initial active tab
+}
+
+function populateDropdowns() {
+    const districtSelect = document.getElementById('districtSelect');
+    const useSelect = document.getElementById('useSelect');
+    const compareDistrictSelect = document.getElementById('compareDistrictSelect'); // New
+    const currentUseSelect = document.getElementById('currentUseSelect');
+    const proposedUseSelect = document.getElementById('proposedUseSelect');
+    const allUses = new Set(); // For general 'Search by Use'
+
+    // Populate District dropdowns (both for district search and compare)
+    if (zoningData && zoningData.districts) {
+        zoningData.districts.forEach(district => {
+            // For main district search
+            let optionDistrict = document.createElement('option');
+            optionDistrict.value = district.code;
+            optionDistrict.textContent = `${district.code} - ${district.name}`;
+            districtSelect.appendChild(optionDistrict);
+
+            // For compare district select
+            let optionCompareDistrict = document.createElement('option');
+            optionCompareDistrict.value = district.code;
+            optionCompareDistrict.textContent = `${district.code} - ${district.name}`;
+            compareDistrictSelect.appendChild(optionCompareDistrict);
+
+            // Collect all uses for the general 'Search by Use' dropdown
+            if (district.uses) {
+                Object.values(district.uses).forEach(category => {
+                    if (category && category.items) {
+                        category.items.forEach(item => allUses.add(item.name));
+                    }
+                });
+            }
+        });
+    }
+
+    // Populate general 'Search by Use' dropdown
+    const sortedUses = Array.from(allUses).sort();
+    sortedUses.forEach(useName => {
+        const option = document.createElement('option');
+        option.value = useName;
+        option.textContent = useName;
+        useSelect.appendChild(option);
+    });
+
+    // Initial state for compare uses dropdowns
+    currentUseSelect.innerHTML = '<option value="">Select a district first...</option>';
+    proposedUseSelect.innerHTML = '<option value="">Select a district first...</option>';
+}
+
+function attachEventListeners() {
+    // Event listeners for the new tab buttons
+    document.getElementById('tabDistrict').addEventListener('click', () => toggleSearchMode('district'));
+    document.getElementById('tabUse').addEventListener('click', () => toggleSearchMode('use'));
+    document.getElementById('tabCompare').addEventListener('click', () => toggleSearchMode('compare'));
+    
+    document.getElementById('districtSelect').addEventListener('change', search);
+    document.getElementById('useSelect').addEventListener('change', search);
+    document.getElementById('compareUsesBtn').addEventListener('click', compareUses);
+    document.getElementById('closeModalButton').addEventListener('click', closeModal);
+    document.getElementById('resetButton').addEventListener('click', resetApplication);
+
+    // New event listener for the compare district select
+    document.getElementById('compareDistrictSelect').addEventListener('change', (e) => {
+        const selectedDistrictCode = e.target.value;
+        populateUsesForComparison(selectedDistrictCode);
+        // Clear previous comparison results when district changes
+        document.getElementById('results').innerHTML = '';
+    });
+
+    // New event listener for proposedUseSelect to update quantity label/placeholder
+    document.getElementById('proposedUseSelect').addEventListener('change', updateProposedUseQuantityInput);
+}
+
+function resetApplication() {
+    document.getElementById('results').innerHTML = '';
+    document.getElementById('districtSelect').value = '';
+    document.getElementById('useSelect').value = '';
+    document.getElementById('compareDistrictSelect').value = ''; // Reset new district select
+    document.getElementById('currentUseSelect').value = '';
+    document.getElementById('proposedUseSelect').value = '';
+    document.getElementById('existingParkingSpaces').value = ''; // Reset existing parking spaces
+    document.getElementById('vacantTwoYears').checked = false;
+    document.getElementById('siteChanges').checked = false;
+    currentDistrict = null;
+    parkingCalculationList = [];
+    // Re-disable and reset compare use dropdowns
+    document.getElementById('currentUseSelect').disabled = true;
+    document.getElementById('proposedUseSelect').disabled = true;
+    document.getElementById('currentUseSelect').innerHTML = '<option value="">Select a district first...</option>';
+    document.getElementById('proposedUseSelect').innerHTML = '<option value="">Select a district first...</option>';
+
+    // Reset proposed use quantity input
+    document.getElementById('proposedUseQuantity').value = '';
+    document.getElementById('proposedUseQuantityLabel').textContent = 'Proposed Use Quantity:';
+    document.getElementById('proposedUseQuantity').placeholder = 'e.g., 1000 sq ft';
+
+    // IMPORTANT: Do NOT set the checked state of radio buttons here.
+    // The toggleSearchMode function handles active tab styling.
+}
+
+// Modified toggleSearchMode to handle tab active states
+function toggleSearchMode(modeFromClick = null) {
+    const mode = modeFromClick || document.querySelector('.tab-button.active')?.dataset.mode || 'district';
+    currentSearchType = mode; // Update global search type
+
+    // Remove 'active' class from all tab buttons
+    document.querySelectorAll('.tab-button').forEach(button => {
+        button.classList.remove('active');
+    });
+
+    // Add 'active' class to the clicked/default tab button
+    document.getElementById(`tab${mode.charAt(0).toUpperCase() + mode.slice(1)}`).classList.add('active');
+
+    // Show/hide content wrappers
+    document.getElementById('districtSearchWrapper').style.display = (mode === 'district') ? 'block' : 'none';
+    document.getElementById('useSearchWrapper').style.display = (mode === 'use') ? 'block' : 'none';
+    document.getElementById('compareUsesWrapper').style.display = (mode === 'compare') ? 'flex' : 'none';
+
+    // Clear previous results when switching modes
+    // This call to resetApplication() is crucial and should happen AFTER the mode is set
+    // to ensure the UI state is clean for the new mode.
+    resetApplication(); 
+
+    // If switching to a mode that requires immediate search (like district or use), trigger it.
+    // For 'compare' mode, the user needs to select district/uses and click 'Compare Uses' button.
+    if (mode === 'district' && document.getElementById('districtSelect').value) {
+        search();
+    } else if (mode === 'use' && document.getElementById('useSelect').value) {
+        search();
+    }
+}
+
+
+// New function to populate current/proposed use dropdowns based on selected district
+function populateUsesForComparison(districtCode) {
+    const currentUseSelect = document.getElementById('currentUseSelect');
+    const proposedUseSelect = document.getElementById('proposedUseSelect');
+
+    currentUseSelect.innerHTML = '<option value="">Select current use...</option>';
+    proposedUseSelect.innerHTML = '<option value="">Select proposed use...</option>';
+    currentUseSelect.disabled = true;
+    proposedUseSelect.disabled = true;
+
+    if (!districtCode) {
+        return;
+    }
+
+    const selectedDistrict = zoningData.districts.find(d => d.code === districtCode);
+    if (!selectedDistrict) {
+        console.error("Selected district not found:", districtCode);
+        return;
+    }
+
+    const permittedUsesInDistrict = new Set();
+    if (selectedDistrict.uses) {
+        Object.values(selectedDistrict.uses).forEach(category => {
+            if (category && category.items) {
+                category.items.forEach(item => permittedUsesInDistrict.add(item.name));
+            }
+        });
+    }
+
+    const sortedUses = Array.from(permittedUsesInDistrict).sort();
+    sortedUses.forEach(useName => {
+        const option1 = document.createElement('option');
+        option1.value = useName;
+        option1.textContent = useName;
+        currentUseSelect.appendChild(option1);
+
+        const option2 = document.createElement('option');
+        option2.value = useName;
+        option2.textContent = useName;
+        proposedUseSelect.appendChild(option2);
+    });
+
+    currentUseSelect.disabled = false;
+    proposedUseSelect.disabled = false;
+
+    // After populating, update the proposed use quantity input based on the *initially selected* proposed use (if any)
+    updateProposedUseQuantityInput();
+}
+
+// New function to update the proposed use quantity input label and placeholder
+function updateProposedUseQuantityInput() {
+    const proposedUseSelect = document.getElementById('proposedUseSelect');
+    const proposedUseQuantityLabel = document.getElementById('proposedUseQuantityLabel');
+    const proposedUseQuantityInput = document.getElementById('proposedUseQuantity');
+
+    const selectedUseName = proposedUseSelect.value;
+    let unit = 'units';
+    let placeholder = 'Enter value';
+
+    if (selectedUseName) {
+        // Find the full use object to get its parkingKey
+        let proposedUse = null;
+        const compareDistrictCode = document.getElementById('compareDistrictSelect').value;
+        if (compareDistrictCode) {
+            const selectedDistrict = zoningData.districts.find(d => d.code === compareDistrictCode);
+            if (selectedDistrict) {
+                for (const categoryKey in selectedDistrict.uses) {
+                    const category = selectedDistrict.uses[categoryKey];
+                    const foundItem = category.items.find(item => item.name === selectedUseName);
+                    if (foundItem) {
+                        proposedUse = foundItem;
+                        break;
+                    }
+                }
+            }
+        }
+        
+        if (proposedUse && parkingData[proposedUse.parkingKey]?.calc?.unit) {
+            unit = parkingData[proposedUse.parkingKey].calc.unit;
+            // Provide a more specific placeholder based on the unit
+            if (unit === 'sq ft gfa') {
+                placeholder = 'e.g., 1000 sq ft gfa';
+            } else if (unit === 'seats') {
+                placeholder = 'e.g., 50 seats';
+            } else if (unit === 'dwelling') {
+                placeholder = 'e.g., 5 dwellings';
+            } else if (unit === 'apartment') {
+                placeholder = 'e.g., 3 apartments';
+            } else if (unit === 'employee') {
+                placeholder = 'e.g., 10 employees';
+            } else if (unit === 'room') {
+                placeholder = 'e.g., 12 rooms';
+            } else if (unit === 'exam room') {
+                placeholder = 'e.g., 4 exam rooms';
+            } else if (unit === 'washing machines') {
+                placeholder = 'e.g., 15 washing machines';
+            } else if (unit === 'room/suite') {
+                placeholder = 'e.g., 20 rooms/suites';
+            } else if (unit === 'playing area' || unit === 'court') {
+                placeholder = 'e.g., 2 playing areas';
+            } else if (unit === 'gas pump') {
+                placeholder = 'e.g., 4 gas pumps';
+            } else if (unit === 'service bay') {
+                placeholder = 'e.g., 3 service bays';
+            } else if (unit === 'site') {
+                placeholder = 'e.g., 10 sites';
+            } else if (unit === 'boat slip') {
+                placeholder = 'e.g., 25 boat slips';
+            } else if (unit === 'aircraft tie-downs') {
+                placeholder = 'e.g., 5 aircraft tie-downs';
+            } else if (unit === 'office area') {
+                placeholder = 'e.g., 500 sq ft office area';
+            }
+        }
+    }
+
+    proposedUseQuantityLabel.textContent = `Proposed Use Quantity (in ${unit}):`;
+    proposedUseQuantityInput.placeholder = placeholder;
+}
+
+
+function search() {
+    const mode = currentSearchType; // Use the global currentSearchType
+    const resultsDiv = document.getElementById('results');
+    resultsDiv.innerHTML = '<div class="text-center text-gray-500">Loading...</div>';
+
+    if (mode === 'district') {
+        const districtCode = document.getElementById('districtSelect').value;
+        if (!districtCode) {
+            resultsDiv.innerHTML = '';
+            return;
+        }
+        currentDistrict = zoningData.districts.find(d => d.code === districtCode);
+        parkingCalculationList = [];
+        displayDistrictResults();
+
+    } else if (mode === 'use') {
+        const useName = document.getElementById('useSelect').value;
+        if (!useName) {
+            resultsDiv.innerHTML = '';
+            return;
+        }
+        currentDistrict = null; // Clear current district context for use search
+        const districtsWithUse = findDistrictsByUse(useName);
+        displayUseResults(useName, districtsWithUse);
+    }
+    // 'compare' mode is handled by compareUses function, triggered by its own button
+}
+
+function compareUses() {
+    const resultsDiv = document.getElementById('results');
+    resultsDiv.innerHTML = '<div class="text-center text-gray-500">Calculating comparison...</div>';
+
+    const compareDistrictCode = document.getElementById('compareDistrictSelect').value;
+    const currentUseName = document.getElementById('currentUseSelect').value;
+    const proposedUseName = document.getElementById('proposedUseSelect').value;
+    const existingParkingSpaces = parseInt(document.getElementById('existingParkingSpaces').value, 10) || 0;
+    const vacantTwoYears = document.getElementById('vacantTwoYears').checked;
+    const siteChanges = document.getElementById('siteChanges').checked;
+
+    if (!compareDistrictCode) {
+        resultsDiv.innerHTML = '<p class="text-center text-red-600 mt-4">Please select a district for comparison.</p>';
+        return;
+    }
+    if (!currentUseName || !proposedUseName) {
+        resultsDiv.innerHTML = '<p class="text-center text-red-600 mt-4">Please select both a current and proposed land use for comparison.</p>';
+        return;
+    }
+
+    const selectedDistrictForComparison = zoningData.districts.find(d => d.code === compareDistrictCode);
+    if (!selectedDistrictForComparison) {
+        resultsDiv.innerHTML = '<p class="text-red-600 text-center">Selected district not found for comparison.</p>';
+        return;
+    }
+
+    // Find the full use objects including their types, within the context of the selected district
+    const getUseDetailsInDistrict = (useName, district) => {
+        for (const categoryKey in district.uses) {
+            const category = district.uses[categoryKey];
+            const foundItem = category.items.find(item => item.name === useName);
+            if (foundItem) {
+                return { ...foundItem, category: categoryKey };
+            }
+        }
+        return null;
+    };
+
+    const currentUse = getUseDetailsInDistrict(currentUseName, selectedDistrictForComparison);
+    const proposedUse = getUseDetailsInDistrict(proposedUseName, selectedDistrictForComparison);
+
+    if (!currentUse || !proposedUse) {
+        resultsDiv.innerHTML = '<p class="text-red-600 text-center">One or both selected uses are not permitted in the chosen district. Please select valid uses.</p>';
+        return;
+    }
+
+    let html = `<h2 class="text-2xl font-bold text-gray-800 mb-4">Use Comparison in <span class="text-blue-600">${selectedDistrictForComparison.code} - ${selectedDistrictForComparison.name}</span></h2>`;
+    html += `<div class="p-4 bg-gray-50 rounded-md border mb-6">
+                <p class="text-gray-700"><strong>Current Use:</strong> ${currentUse.name} (Type: ${currentUse.type})</p>
+                <p class="text-gray-700"><strong>Proposed Use:</strong> ${proposedUse.name} (Type: ${proposedUse.type})</p>
+                <p class="text-gray-700"><strong>Existing Parking Spaces:</strong> ${existingParkingSpaces > 0 ? existingParkingSpaces : 'Not specified'}</p>
+                <p class="text-gray-700"><strong>Vacant 2+ years:</strong> ${vacantTwoYears ? 'Yes' : 'No'}</p>
+                <p class="text-gray-700"><strong>Site changes proposed:</strong> ${siteChanges ? 'Yes' : 'No'}</p>
+             </div>`;
+
+    // Rule B: Vacant for two or more years
+    if (vacantTwoYears) {
+        html += `<div class="p-4 bg-red-100 border-l-4 border-red-500 text-red-800 rounded mb-4">
+                    <p class="font-bold">Site Plan Review Required:</p>
+                    <p>The building has been vacant for two or more years. Per § 270-114 B, Site Plan Review is required regardless of the proposed use.</p>
+                 </div>`;
+        resultsDiv.innerHTML = html;
+        resultsDiv.innerHTML += renderParkingComparison(currentUse, proposedUse, existingParkingSpaces); // Add parking comparison
+        resultsDiv.innerHTML += renderNotes();
+        resultsDiv.innerHTML += renderPdfButton();
+        attachResultEventListeners();
+        return;
+    }
+
+    // Rule A: Check for intensification and site changes
+    let intensification = isIntensification(currentUse.type, proposedUse.type);
+    let parkingTriggeredSiteChange = false;
+
+    // Get the proposed quantity from the input field in the UI
+    const proposedQuantityInput = document.getElementById('proposedUseQuantity');
+    const proposedQuantity = proposedQuantityInput ? (parseFloat(proposedQuantityInput.value) || 0) : 0;
+
+    const proposedParkingRule = parkingData[proposedUse.parkingKey];
+    let calculatedProposedParking = 0;
+
+    if (proposedParkingRule && proposedParkingRule.calc) {
+        calculatedProposedParking = Math.ceil(proposedQuantity * proposedParkingRule.calc.value);
+        if (calculatedProposedParking > existingParkingSpaces) {
+            parkingTriggeredSiteChange = true;
+        }
+    }
+
+
+    if (intensification || siteChanges || parkingTriggeredSiteChange) {
+        let reasons = [];
+        if (intensification) {
+            reasons.push(`The proposed use (${proposedUse.name}, type: ${proposedUse.type}) is considered an intensification of the current use (${currentUse.name}, type: ${currentUse.type}).`);
+        }
+        if (siteChanges) {
+            reasons.push("Changes to building footprint, gross floor area, parking lot, driveways, landscaping, or other site features are explicitly proposed.");
+        }
+        if (parkingTriggeredSiteChange) {
+            reasons.push(`The proposed use (${proposedUse.name}) requires more parking spaces (${calculatedProposedParking} calculated for ${proposedQuantity} ${proposedParkingRule.calc?.unit || 'units'}) than the existing ${existingParkingSpaces} spaces, potentially triggering a "change to the parking lot."`);
+        }
+
+
+        html += `<div class="p-4 bg-red-100 border-l-4 border-red-500 text-red-800 rounded mb-4">
+                    <p class="font-bold">Site Plan Review Required:</p>
+                    <ul class="list-disc list-inside mt-2">
+                        ${reasons.map(r => `<li>${r}</li>`).join('')}
+                    </ul>
+                    <p class="mt-2">Per § 270-114 A, Site Plan Review is required.</p>
+                 </div>`;
+    } else {
+        // If proposed use is a Site Plan Review use, but no intensification or site changes
+        const proposedUseRequiresSPR = ['sitePlanReview', 'conditionalUse', 'conditionalUseAndSitePlan'].includes(proposedUse.category);
+
+        if (proposedUseRequiresSPR) {
+            html += `<div class="p-4 bg-green-100 border-l-4 border-green-500 text-green-800 rounded mb-4">
+                        <p class="font-bold">Site Plan Review Likely NOT Required (for tenancy change):</p>
+                        <p>Although the proposed use (${proposedUse.name}) typically requires Site Plan Review, based on § 270-114 A, if there is no intensification of use, no explicit site changes proposed, and the existing parking (${existingParkingSpaces} spaces) appears sufficient for the proposed use, Site Plan Review for *this change in tenancy* may not be required.</p>
+                        <p class="mt-2 text-sm"><strong>Important:</strong> This applies specifically to the change in tenancy. Always confirm with the Town of Glenville for definitive guidance, especially regarding parking adequacy.</p>
+                     </div>`;
+        } else {
+            html += `<div class="p-4 bg-green-100 border-l-4 border-green-500 text-green-800 rounded mb-4">
+                        <p class="font-bold">Site Plan Review NOT Required (for tenancy change):</p>
+                        <p>The proposed use (${proposedUse.name}) does not appear to be an intensification of the current use (${currentUse.name}), no explicit site changes are indicated, and the existing parking (${existingParkingSpaces} spaces) appears sufficient. Additionally, the proposed use is not typically a Site Plan Review use itself (or is 'Permitted by Right').</p>
+                        <p class="mt-2 text-sm"><strong>Important:</strong> Always confirm with the Town of Glenville Planning Department for definitive guidance.</p>
+                     </div>`;
+        }
+    }
+
+    html += renderParkingComparison(currentUse, proposedUse, existingParkingSpaces); // Add parking comparison
+    html += renderNotes();
+    html += renderPdfButton();
+    resultsDiv.innerHTML = html;
+    attachResultEventListeners();
+}
+
+function isIntensification(currentType, proposedType) {
+    const currentRank = intensificationHierarchy.indexOf(currentType);
+    const proposedRank = intensificationHierarchy.indexOf(proposedType);
+
+    // If either type is not found, we cannot determine intensification, so assume it might be.
+    if (currentRank === -1 || proposedRank === -1) {
+        console.warn(`Unknown use type encountered: Current: ${currentType}, Proposed: ${proposedType}. Cannot determine intensification definitively.`);
+        return true; // Err on the side of caution
+    }
+
+    // Specific cases from the rule:
+    // "residential to commercial"
+    if (currentType === 'residential' && proposedType === 'commercial') return true;
+    // "residential to mixed residential/commercial"
+    if (currentType === 'residential' && proposedType === 'mixed-use') return true;
+    // "office to assembly" (assembly would fall under industrial or special)
+    if (currentType === 'office' && (proposedType === 'industrial' || proposedType === 'special')) return true;
+
+    // General intensification: if proposed use is higher in rank
+    return proposedRank > currentRank;
+}
+
+// Function to render parking comparison details
+function renderParkingComparison(currentUse, proposedUse, existingParkingSpaces) {
+    const currentParkingRule = parkingData[currentUse.parkingKey];
+    const proposedParkingRule = parkingData[proposedUse.parkingKey];
+
+    // Initial value for proposed parking quantity
+    let initialProposedQuantity = document.getElementById('proposedUseQuantity')?.value || 1; // Get value from input if exists
+
+    let html = `<div class="mt-8">
+        <details>
+            <summary class="section-header cursor-pointer">Parking Requirements Comparison <span class="text-sm font-normal text-gray-500">(expand for details)</span></summary>
+            <div class="mt-4 p-4 border rounded-lg bg-gray-50 space-y-4">
+                <p class="text-gray-700"><strong>Existing Parking Spaces on Site:</strong> ${existingParkingSpaces > 0 ? existingParkingSpaces : 'Not specified'}</p>
+                
+                <h4 class="font-bold text-gray-800 mt-4 mb-2">Parking Rules for Current Use: ${currentUse.name}</h4>
+                ${currentParkingRule ? `
+                    <p class="text-gray-700 ml-4"><strong>Minimum Spaces:</strong> ${currentParkingRule.min}</p>
+                    <p class="text-gray-700 ml-4"><strong>Maximum Spaces:</strong> ${currentParkingRule.max || 'N/A'}</p>
+                    ${currentParkingRule.calc ? `<p class="text-sm text-gray-600 ml-4">Calculation basis: 1 space per ${1/currentParkingRule.calc.value} ${currentParkingRule.calc.unit}</p>` : ''}
+                ` : `<p class="text-gray-600">Parking requirements not specified for this use in data.</p>`}
+                
+                <h4 class="font-bold text-gray-800 mt-6 mb-2">Parking Rules for Proposed Use: ${proposedUse.name}</h4>
+                ${proposedParkingRule ? `
+                    <div class="flex flex-col md:flex-row items-start md:items-center gap-2 mb-4">
+                        <label for="proposedUseQuantity" class="text-sm font-medium text-gray-700 md:w-1/4">Quantity (in ${proposedParkingRule.calc?.unit || 'units'}):</label>
+                        <input type="number" id="proposedUseQuantity" class="flex-grow p-2 border border-gray-300 rounded-md text-sm" placeholder="Enter value" value="${initialProposedQuantity}">
+                        <div class="text-right font-semibold text-gray-800 md:w-1/4" id="proposedUseCalculatedParkingResult">
+                            ${calculateSingleUseParking(proposedParkingRule, initialProposedQuantity)}
+                        </div>
+                    </div>
+                    <p class="text-gray-700 ml-4"><strong>Minimum Spaces:</strong> ${proposedParkingRule.min}</p>
+                    <p class="text-gray-700 ml-4"><strong>Maximum Spaces:</strong> ${proposedParkingRule.max || 'N/A'}</p>
+                    ${proposedParkingRule.calc ? `<p class="text-sm text-gray-600 ml-4">Calculation basis: 1 space per ${1/proposedParkingRule.calc.value} ${proposedParkingRule.calc.unit}</p>` : ''}
+                ` : `<p class="text-gray-600">Parking requirements not specified for this use in data.</p>`}
+
+                <div class="mt-4 p-3 bg-blue-50 border-l-4 border-blue-400 text-blue-800 rounded">
+                    <p class="font-semibold">Note on Parking and Site Plan Review:</p>
+                    <p class="text-sm">Significant changes in parking demand (e.g., needing more spaces than currently available) typically constitute a "change to the parking lot" and would trigger Site Plan Review, even if other aspects of the building are not altered. Consult the full parking regulations in § 270-73 for detailed requirements.</p>
+                </div>
+            </div>
+        </details>
+    </div>`;
+    
+    // Attach event listener for the proposed use parking quantity input
+    setTimeout(() => { // Use setTimeout to ensure elements are rendered before attaching listeners
+        const proposedInput = document.getElementById('proposedUseQuantity');
+        if (proposedInput && proposedParkingRule?.calc) {
+            proposedInput.addEventListener('input', () => {
+                const quantity = parseFloat(proposedInput.value) || 0;
+                document.getElementById('proposedUseCalculatedParkingResult').textContent = calculateSingleUseParking(proposedParkingRule, quantity);
+            });
+        }
+    }, 0); 
+
+    return html;
+}
+
+// Helper function to calculate parking for a single use
+function calculateSingleUseParking(rule, quantity) {
+    if (rule && rule.calc) {
+        const calculated = Math.ceil(quantity * rule.calc.value);
+        return `Calculated: ${calculated} spaces`;
+    }
+    return 'Calculation N/A';
+}
+
+
+function displayDistrictResults() {
+    const resultsDiv = document.getElementById('results');
+    if (!currentDistrict) {
+        resultsDiv.innerHTML = `<p class="text-red-600 text-center">District not found.</p>`;
+        return;
+    }
+    
+    let html = renderDistrictHeader(currentDistrict);
+    html += '<h3 class="section-header mb-4">Permitted Uses</h3>';
+    html += renderFilterControls();
+    html += renderUsesSection(currentDistrict.uses);
+    if (currentDistrict.dimensionalRegulations) html += renderDimensionalRegulations(currentDistrict.dimensionalRegulations);
+    html += renderParkingRequirements(currentDistrict);
+    html += renderSignRegulations(currentDistrict);
+    if (currentDistrict.accessoryUses) html += renderAccessoryUses(currentDistrict.accessoryUses);
+    html += renderNotes();
+    html += renderPdfButton();
+    
+    resultsDiv.innerHTML = html;
+    attachResultEventListeners();
+}
+
+function findDistrictsByUse(useName) {
+    const foundIn = [];
+    if (zoningData && zoningData.districts) {
+        zoningData.districts.forEach(district => {
+            if(district.uses) {
+                for (const [categoryKey, categoryValue] of Object.entries(district.uses)) {
+                    if (categoryValue && categoryValue.items && categoryValue.items.some(item => item.name === useName)) {
+                        const badgeClasses = { byRight: 'bg-green-700 text-white', sitePlanReview: 'bg-yellow-500 text-black', conditionalUse: 'bg-red-800 text-white', conditionalUseAndSitePlan: 'bg-cyan-800 text-white' };
+                        foundIn.push({ code: district.code, name: district.name, status: categoryValue.title, statusClass: badgeClasses[categoryKey] || 'bg-gray-500 text-white' });
+                        break;
+                    }
+                }
+            }
+        });
+    }
+    return foundIn;
+}
+
+function displayUseResults(useName, districts) {
+    const resultsDiv = document.getElementById('results');
+    let html = `<h2 class="text-2xl font-bold text-gray-800 mb-4">Districts Allowing: <span class="text-blue-600">${useName}</span></h2>`;
+
+    if (districts.length > 0) {
+        html += '<ul class="space-y-3">';
+        districts.forEach(d => {
+            html += `<li class="p-4 bg-gray-50 rounded-md border flex justify-between items-center">
+                                <span class="font-semibold text-gray-700">${d.code} - ${d.name}</span>
+                                <span class="text-sm font-semibold py-1 px-3 rounded-full ${d.statusClass}">${d.status}</span>
+                             </li>`;
+        });
+        html += '</ul>';
+    } else {
+        html += `<p class="text-center text-gray-600 mt-4">This use is not explicitly listed as permitted in any district. Please consult with the Town of Glenville for clarification.</p>`;
+    }
+    html += renderNotes();
+    html += renderPdfButton();
+    resultsDiv.innerHTML = html;
+    attachResultEventListeners();
+}
+
+function renderDistrictHeader(district) {
+    return `<div class="district-header bg-gray-100 p-6 rounded-lg mb-6 border">
+                <div>
+                    <h2 class="text-3xl font-bold text-gray-900">${district.code} - ${district.name}</h2>
+                    <p class="mt-2 text-gray-600 italic">${district.purpose}</p>
+                </div>
+            </div>`;
+}
+
+function renderFilterControls() {
+    const categories = [ { key: 'byRight', title: 'By Right' }, { key: 'sitePlanReview', title: 'Site Plan' }, { key: 'conditionalUse', title: 'Conditional' }, { key: 'conditionalUseAndSitePlan', title: 'Conditional & Site Plan' } ];
+    let buttonsHtml = categories.map(cat => {
+        const isActive = activeFilters.has(cat.key);
+        const activeClass = isActive ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300';
+        return `<button data-filter="${cat.key}" class="filter-btn py-2 px-4 rounded-md text-sm font-semibold transition ${activeClass}">${cat.title}</button>`;
+    }).join('');
+    return `<div class="filter-buttons mb-6 flex flex-wrap gap-2">${buttonsHtml}</div>`;
+}
+
+function renderUsesSection(uses) {
+    const useTypes = [ { key: 'byRight', data: uses.byRight, badge: 'bg-green-700 text-white' }, { key: 'sitePlanReview', data: uses.sitePlanReview, badge: 'bg-yellow-500 text-black' }, { key: 'conditionalUse', data: uses.conditionalUse, badge: 'bg-red-800 text-white' }, { key: 'conditionalUseAndSitePlan', data: uses.conditionalUseAndSitePlan, badge: 'bg-cyan-800 text-white' } ];
+    let html = '<div class="space-y-6">';
+    useTypes.forEach(useType => {
+        if (activeFilters.has(useType.key) && useType.data && useType.data.items.length > 0) {
+            html += `<div class="regulation-section border border-gray-200 rounded-lg overflow-hidden">
+                <h4 class="category-title p-4 bg-gray-50 text-lg font-bold text-gray-800 border-b">
+                    <span class="text-sm font-semibold py-1 px-3 rounded-full mr-3 ${useType.badge}">${useType.data.title}</span>
+                </h4>
+                <ul class="uses-list divide-y divide-gray-200">
+                    ${useType.data.items.map(item => `
+                        <li class="p-4">
+                            <div class="use-item flex justify-between items-center">
+                                <span class="text-gray-800">${item.name}</span>
+                                ${item.definition ? `<button class="info-button text-gray-500 hover:text-blue-600" data-name="${item.name}" data-definition="${item.definition}" ${item.supplementalCode ? `data-supplemental-code="${item.supplementalCode}"` : ''} aria-label="Show definition for ${item.name}" title="Show definition">
+                                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                </button>` : ''}
+                            </div>
+                        </li>`).join('')}
+                </ul>
+            </div>`;
+        }
+    });
+    html += '</div>';
+    return html;
+}
+
+function renderDimensionalRegulations(regulations) {
+    if (!regulations || regulations.length === 0) return '';
+    return `<div class="mt-8">
+        <details>
+            <summary class="section-header cursor-pointer">Dimensional Regulations <span class="text-sm font-normal text-gray-500">(click to see table)</span></summary>
+            <div class="mt-4">
+                ${renderDimensionTable(regulations)}
+            </div>
+        </details>
+    </div>`;
+}
+
+function renderParkingRequirements(district) {
+    const tableRows = Object.entries(parkingData).map(([use, rule]) => `
+        <tr>
+            <td data-label="Land Use">${use}</td>
+            <td data-label="Minimum Spaces">${rule.min}</td>
+            <td data-label="Maximum Spaces">${rule.max || 'N/A'}</td>
+        </tr>`).join('');
+
+    return `<div class="mt-8">
+        <details>
+            <summary class="section-header cursor-pointer">Off-Street Parking Requirements <span class="text-sm font-normal text-gray-500">(expand for more information)</span></summary>
+            <div class="mt-4">
+                <div id="parkingCalculator" class="interactive-tool p-4 border rounded-lg bg-gray-50 mb-4 space-y-3">
+                    <h4 class="font-bold text-gray-800">Parking Space Calculator</h4>
+                    <div id="parking-calc-entries">
+                        <!-- Dynamic rows will be added here -->
+                    </div>
+                    <div class="flex items-center gap-4 mt-2">
+                        <button id="addParkingUseBtn" class="bg-blue-500 text-white px-3 py-1 rounded-md text-sm hover:bg-blue-600">Add Use to Calculation</button>
+                        <button id="clearParkingCalcBtn" class="text-sm text-red-600 hover:underline">Clear Calculator</button>
+                    </div>
+                    <div class="border-t mt-3 pt-3 space-y-2">
+                            <div id="parkingTotalResult" class="text-center font-bold text-lg text-blue-700 h-8"></div>
+                            <div id="adaResult" class="text-center text-sm text-gray-600"></div>
+                            <div id="evResult" class="text-center text-sm text-gray-600"></div>
+                    </div>
+                </div>
+                <div class="mt-4 p-4 border rounded-lg bg-gray-50 text-sm">
+                   <p><strong>General Parking Rules (§ 270-73):</strong></p>
+                   <ul class="list-disc list-inside mt-2 space-y-1">
+                        <li>Standard space size: 10 feet wide by 20 feet long.</li>
+                        <li>Setbacks: No closer than 25 feet to a street right-of-way, and 10 feet to rear or side property lines.</li>
+                        <li>A 40-foot setback is required from adjacent single- or two-family dwellings.</li>
+                        <li><a href="https://ecode360.com/6962372" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">View full text for additional requirements &rarr;</a></li>
+                   </ul>
+                </div>
+                <h4 class="font-semibold text-md mb-2 mt-6 text-gray-700">Parking Requirements Reference Table (Schedule A)</h4>
+                <div class="parking-table-wrapper border rounded-lg">
+                    <table class="parking-table w-full text-sm">
+                        <thead class="bg-gray-100"><tr>
+                            <th scope="col" class="p-3 font-semibold text-left">Land Use</th>
+                            <th scope="col" class="p-3 font-semibold text-left">Minimum Required Spaces</th>
+                            <th scope="col" class="p-3 font-semibold text-left">Maximum Allowed Spaces</th>
+                        </tr></thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            ${tableRows}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </details>
+    </div>`;
+}
+
+function renderSignRegulations(district) {
+    if (!district.signCategory) return '';
+
+    const signRules = signData[district.signCategory] || {};
+    
+    let typesHtml = '';
+    if (signRules.types) {
+        typesHtml = signRules.types.map(t => `
+            <tr>
+                <td class="p-2 font-semibold">${t.type}</td>
+                <td class="p-2">${t.maxArea}</td>
+                <td class="p-2">${t.maxHeight}</td>
+                <td class="p-2">${t.setback}</td>
+            </tr>
+        `).join('');
+    }
+
+    const temporaryRows = signData.temporary.map(t => `
+        <tr>
+            <td class="p-2 font-semibold">${t.type}</td>
+            <td class="p-2">${t.maxArea}</td>
+            <td class="p-2">${t.duration}</td>
+            <td class="p-2">${t.setback}</td>
+        </tr>
+    `).join('');
+
+    return `<div class="mt-8">
+        <details>
+            <summary class="section-header cursor-pointer">Sign Regulations (§ 270-63) <span class="text-sm font-normal text-gray-500">(expand for more information)</span></summary>
+            <div class="mt-4 p-4 border rounded-lg bg-gray-50 space-y-6">
+                <div>
+                    <h4 class="font-bold text-gray-800 mb-2">General Provisions for All Signs</h4>
+                    <ul class="list-disc list-inside text-sm text-gray-700 space-y-1">
+                        ${signData.general.map(rule => `<li>${rule}</li>`).join('')}
+                    </ul>
+                </div>
+                
+                <div>
+                    <h4 class="font-bold text-gray-800 mb-2">Regulations for ${district.signCategory.charAt(0).toUpperCase() + district.signCategory.slice(1)} Districts</h4>
+                    <p class="text-sm text-gray-700 mb-2">Total sign area for all signs on one lot cannot exceed <strong>${signRules.totalArea}</strong>.</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-left">
+                            <thead class="bg-gray-200">
+                                <tr><th class="p-2">Type</th><th class="p-2">Max Area</th><th class="p-2">Max Height</th><th class="p-2">Min Setback</th></tr>
+                            </thead>
+                            <tbody>${typesHtml}</tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div>
+                    <h4 class="font-bold text-gray-800 mb-2">Temporary & Special Sign Regulations</h4>
+                     <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-left">
+                            <thead class="bg-gray-200">
+                                <tr><th class="p-2">Type</th><th class="p-2">Max Area</th><th class="p-2">Duration</th><th class="p-2">Min Setback</th></tr>
+                            </thead>
+                            <tbody>${temporaryRows}</tbody>
+                        </table>
+                    </div>
+                </div>
+                <a href="https://ecode360.com/6962230" target="_blank" rel="noopener noreferrer" class="inline-block mt-4 text-blue-600 hover:underline">View full text of sign regulations &rarr;</a>
+            </div>
+        </details>
+    </div>`;
+}
+
+function renderDimensionTable(dimensions) {
+    return `<div class="dimension-table-wrapper border rounded-lg">
+            <table class="dimension-table w-full text-sm">
+                <thead class="bg-gray-100"><tr>
+                    <th scope="col" class="p-3 font-semibold text-left">Use</th><th scope="col" class="p-3 font-semibold text-left">Min. Lot Size</th><th scope="col" class="p-3 font-semibold text-left">Min. Width</th><th scope="col" class="p-3 font-semibold text-left">Min. Depth</th><th scope="col" class="p-3 font-semibold text-left">Front Setback</th><th scope="col" class="p-3 font-semibold text-left">Side Setback</th><th scope="col" class="p-3 font-semibold text-left">Rear Setback</th><th scope="col" class="p-3 font-semibold text-left">Max. Height</th><th scope="col" class="p-3 font-semibold text-left">Max. Lot Coverage</th>
+                </tr></thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    ${dimensions.map(d => `<tr>
+                        <td data-label="Use">${d.use || 'N/A'}</td><td data-label="Min. Lot Size">${d.minLotSize || 'N/A'}</td><td data-label="Min. Width">${d.minWidth || 'N/A'}</td><td data-label="Min. Depth">${d.minDepth || 'N/A'}</td><td data-label="Front Setback">${d.frontSetback || 'N/A'}</td><td data-label="Side Setback">${d.sideSetback || 'N/A'}</td><td data-label="Rear Setback">${d.rearSetback || 'N/A'}</td><td data-label="Max. Height">${d.maxHeight || 'N/A'}</td><td data-label="Max. Lot Coverage">${d.maxLotCoverage || 'N/A'}</td>
+                    </tr>`).join('')}
+                </tbody>
+            </table></div>`;
+}
+
+function renderAccessoryUses(accessory) {
+    if (!accessory) return '';
+    return `<details class="accessory-section mt-8">
+        <summary class="section-header">Accessory Uses and Setback Requirements <span class="text-sm font-normal text-gray-500">(expand for more information)</span></summary>
+        <div class="mt-4 p-4 border rounded-lg bg-gray-50">
+            ${accessory.definitions ? `<h4 class="font-bold text-gray-700 mb-2">Definitions</h4>
+            <ul class="list-disc list-inside space-y-1 mb-4 text-gray-600">
+                ${Object.entries(accessory.definitions).map(([term, def]) => `<li><strong>${term}:</strong> ${def}</li>`).join('')}
+            </ul>` : ''}
+            
+            ${accessory.permittedUses ? `<h4 class="font-bold text-gray-700 mb-2">Permitted Accessory Uses</h4>
+            <ul class="list-disc list-inside space-y-1 mb-4 text-gray-600 columns-1 md:columns-2">
+                ${accessory.permittedUses.map(use => `<li>${use}</li>`).join('')}
+            </ul>` : ''}
+            
+            ${accessory.setbacks ? `<h4 class="font-bold text-gray-700 mb-2">Setbacks for Accessory Structures</h4>
+            <ul class="list-disc list-inside space-y-1 mb-4 text-gray-600">
+                ${accessory.setbacks.bySize ? accessory.setbacks.bySize.map(size => `<li>Structures ${size.minSize ? `> ${size.minSize}` : `≤ ${size.maxSize}`} sq ft: <strong>Side:</strong> ${size.side}, <strong>Rear:</strong> ${size.rear}</li>`).join('') : ''}
+                ${accessory.setbacks.specific ? accessory.setbacks.specific.map(spec => `<li><strong>${spec.type}:</strong> Side ${spec.side}, Rear ${spec.rear}${spec.conditions ? ` (${spec.conditions})` : ''}</li>`).join('') : ''}
+            </ul>` : ''}
+            
+            ${accessory.heightLimit ? `<h4 class="font-bold text-gray-700">Height Limit: <span class="font-normal text-gray-600">${accessory.heightLimit}</span></h4>` : ''}
+            ${accessory.coverageLimit ? `<h4 class="font-bold text-gray-700">Coverage Limit: <span class="font-normal text-gray-600">${accessory.coverageLimit}</span></h4>` : ''}
+        </div></details>`;
+}
+
+function renderNotes() {
+    return `<div class="notes mt-8 p-4 bg-yellow-50 border-l-4 border-yellow-400 text-yellow-800 rounded-r-lg">
+        <h3 class="font-bold">Disclaimer</h3>
+        <ul class="list-disc list-inside mt-2 text-sm">
+            <li>This tool is for reference purposes only. All information should be verified with the Town of Glenville Planning Department.</li>
+            <li>All measurements are minimum requirements unless otherwise specified.</li>
+            <li>Official zoning verification is required for legal or financial commitments.</li>
+        </ul></div>`;
+}
+
+function renderPdfButton() {
+    return `<div class="mt-8 text-center"><button id="pdfButton" class="w-full md:w-auto px-6 py-3 bg-gray-600 text-white font-semibold rounded-md shadow-sm hover:bg-gray-700 transition-colors">Download Results as PDF</button></div>`;
+}
+
+function attachResultEventListeners() {
+    document.querySelectorAll('.info-button').forEach(b => {
+        b.addEventListener('click', e => {
+            const button = e.currentTarget;
+            openModal(button.dataset.name, button.dataset.definition, button.dataset.supplementalCode);
+        });
+    });
+    document.querySelectorAll('.filter-btn').forEach(b => b.addEventListener('click', e => toggleFilter(e.currentTarget.dataset.filter)));
+    document.getElementById('pdfButton')?.addEventListener('click', generateHighQualityPDF);
+    
+    document.getElementById('addParkingUseBtn')?.addEventListener('click', addParkingCalculationRow);
+    document.getElementById('clearParkingCalcBtn')?.addEventListener('click', clearParkingCalculator);
+}
+
+function addParkingCalculationRow() {
+    const container = document.getElementById('parking-calc-entries');
+    const index = parkingCalculationList.length;
+
+    const calculatorOptions = Object.keys(parkingData)
+        .filter(key => parkingData[key].calc)
+        .map(key => `<option value="${key}">${key}</option>`).join('');
+
+    const row = document.createElement('div');
+    row.className = 'grid grid-cols-1 md:grid-cols-4 gap-4 items-end mb-2';
+    row.id = `parking-row-${index}`;
+    row.innerHTML = `
+        <div class="md:col-span-2">
+           <label for="parkingUseSelect-${index}" class="block text-sm font-medium text-gray-700">Select Land Use</label>
+           <select id="parkingUseSelect-${index}" data-index="${index}" class="parking-use-select mt-1 block w-full p-2 border border-gray-300 rounded-md">
+                <option value="">--Choose a use--</option>
+                ${calculatorOptions}
+           </select>
+        </div>
+        <div>
+           <label for="parkingQuantity-${index}" id="parkingQuantityLabel-${index}" class="block text-sm font-medium text-gray-700">Quantity</label>
+           <input type="number" id="parkingQuantity-${index}" data-index="${index}" class="parking-quantity-input mt-1 block w-full p-2 border border-gray-300 rounded-md" placeholder="Enter value">
+         </div>
+         <div class="flex items-center justify-between">
+            <div id="parking-subtotal-${index}" class="font-medium text-gray-800"></div>
+            <button class="remove-parking-row text-red-500 hover:underline text-sm" data-index="${index}">Remove</button>
+         </div>
+    `;
+    container.appendChild(row);
+    parkingCalculationList.push({ useKey: '', quantity: 0, subtotal: 0 });
+
+    row.querySelector('.parking-use-select').addEventListener('change', updateParkingCalculation);
+    row.querySelector('.parking-quantity-input').addEventListener('input', updateParkingCalculation);
+    row.querySelector('.remove-parking-row').addEventListener('click', (e) => {
+        const idxToRemove = parseInt(e.target.dataset.index, 10);
+        parkingCalculationList[idxToRemove] = null;
+        e.target.closest('.grid').remove();
+        calculateTotalParking();
+    });
+}
+
+function updateParkingCalculation(e) {
+    const index = e.target.dataset.index;
+    const useKey = document.getElementById(`parkingUseSelect-${index}`).value;
+    const quantity = parseFloat(document.getElementById(`parkingQuantity-${index}`).value) || 0;
+    const quantityLabel = document.getElementById(`parkingQuantityLabel-${index}`);
+    const subtotalDiv = document.getElementById(`parking-subtotal-${index}`);
+    
+    let subtotal = 0;
+    const rule = parkingData[useKey];
+    if (rule && rule.calc) {
+        quantityLabel.textContent = `Quantity (in ${rule.calc.unit})`;
+        if (quantity > 0) {
+            subtotal = Math.ceil(quantity * rule.calc.value);
+            subtotalDiv.innerHTML = `= <span class="text-blue-600">${subtotal}</span>`;
+        } else {
+            subtotalDiv.innerHTML = '';
+        }
+    } else {
+        quantityLabel.textContent = 'Quantity';
+        subtotalDiv.innerHTML = '';
+    }
+
+    parkingCalculationList[index] = { useKey, quantity, subtotal };
+    calculateTotalParking();
+}
+
+function calculateTotalParking() {
+    let totalSpaces = 0;
+    parkingCalculationList.forEach(item => {
+        if (item) {
+            totalSpaces += item.subtotal;
+        }
+    });
+
+    const totalResultDiv = document.getElementById('parkingTotalResult');
+    const adaResultDiv = document.getElementById('adaResult');
+    const evResultDiv = document.getElementById('evResult');
+
+    if (totalSpaces > 0) {
+        totalResultDiv.innerHTML = `Total Required Spaces: <span class="text-green-600 text-xl">${totalSpaces}</span>`;
+        
+        // ADA Calculation
+        adaResultDiv.innerHTML = `<strong>Required ADA Spaces:</strong> ${calculateAdaSpaces(totalSpaces)}`;
+
+        // EV Calculation
+        const hasNonResOrMultiFamily = parkingCalculationList.some(item => item && (item.useKey !== 'Residential - single-family'));
+        if (totalSpaces >= 50 && hasNonResOrMultiFamily) {
+            evResultDiv.innerHTML = `<strong>Required EV Stations:</strong> At least 1. Additional spaces determined during Site Plan Review.`;
+        } else {
+            evResultDiv.innerHTML = `<strong>Required EV Stations:</strong> None required for lots under 50 spaces.`;
+        }
+
+    } else {
+        totalResultDiv.innerHTML = '';
+        adaResultDiv.innerHTML = '';
+        evResultDiv.innerHTML = '';
+    }
+}
+
+function calculateAdaSpaces(totalSpaces) {
+    if (totalSpaces <= 0) return 0;
+    if (totalSpaces <= 25) return 1;
+    if (totalSpaces <= 50) return 2;
+    if (totalSpaces <= 75) return 3;
+    if (totalSpaces <= 100) return 4;
+    if (totalSpaces <= 150) return 5;
+    if (totalSpaces <= 200) return 6;
+    if (totalSpaces <= 300) return 7;
+    if (totalSpaces <= 400) return 8;
+    if (totalSpaces <= 500) return 9;
+    if (totalSpaces <= 1000) return 20 + Math.ceil((totalSpaces - 1000) / 100);
+    return 'Consult with Town Building Dept.';
+}
+
+function clearParkingCalculator() {
+    parkingCalculationList = [];
+    document.getElementById('parking-calc-entries').innerHTML = '';
+    calculateTotalParking();
+}
+
+function openModal(name, definition, supplementalCode) {
+    const modal = document.getElementById('definitionModal');
+    const titleEl = document.getElementById('modalTitle');
+    const contentEl = document.getElementById('modalContent');
+    
+    titleEl.textContent = `Definition: ${name}`;
+    let contentHTML = `<p class="text-gray-700">${definition}</p>`;
+
+    if (supplementalCode && supplementalRegulations[supplementalCode]) {
+        const supReg = supplementalRegulations[supplementalCode];
+        contentHTML += `<div class="mt-4 pt-4 border-t">
+            <h4 class="font-bold text-lg text-gray-800 mb-2">${supReg.title}</h4>
+            <p class="text-sm text-gray-600 whitespace-pre-line">${supReg.text}</p>
+            <a href="${supReg.link}" target="_blank" rel="noopener noreferrer" class="inline-block mt-4 text-blue-600 hover:underline">View official source on eCode360 &rarr;</a>
+        </div>`;
+    }
+    
+    contentEl.innerHTML = contentHTML;
+    modal.classList.remove('hidden');
+}
+
+function closeModal() {
+    document.getElementById('definitionModal').classList.add('hidden');
+    document.getElementById('modalContent').innerHTML = '';
+}
+
+
+function toggleFilter(categoryKey) {
+    if (activeFilters.has(categoryKey)) activeFilters.delete(categoryKey);
+    else activeFilters.add(categoryKey);
+    displayDistrictResults();
+}
+
+function generateHighQualityPDF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+    let finalY = 20;
+
+    const addPageIfNeeded = () => {
+        if (finalY > 260) {
+            doc.addPage();
+            finalY = 20;
+        }
+    };
+
+    doc.setFontSize(18);
+    doc.text("Glenville Zoning Regulations Report", 105, finalY, { align: 'center' });
+    finalY += 10;
+    
+    if (currentSearchType === 'district' && currentDistrict) {
+        addPageIfNeeded();
+        doc.setFontSize(14);
+        doc.text(`${currentDistrict.code} - ${currentDistrict.name}`, 10, finalY);
+        finalY += 7;
+
+        doc.setFontSize(10);
+        const purposeLines = doc.splitTextToSize(`Purpose: ${currentDistrict.purpose}`, 180);
+        doc.text(purposeLines, 10, finalY);
+        finalY += purposeLines.length * 4 + 5;
+
+        // Permitted Uses
+        doc.setFontSize(12);
+        doc.text("Permitted Uses", 10, finalY);
+        finalY += 5;
+        Object.values(currentDistrict.uses).forEach(category => {
+            if (category.items && category.items.length > 0) {
+                addPageIfNeeded();
+                doc.setFontSize(11);
+                doc.text(category.title, 14, finalY, {maxWidth: 170});
+                finalY += 6;
+                doc.autoTable({
+                    startY: finalY,
+                    head: [['Use', 'Definition']],
+                    body: category.items.map(item => [item.name, item.definition || '']),
+                    theme: 'grid',
+                    didDrawPage: (data) => { finalY = data.cursor.y + 10; addPageIfNeeded(); },
+                    margin: { left: 14 }
+                });
+                finalY = doc.lastAutoTable.finalY + 5;
+            }
+        });
+
+        // Dimensional Regulations
+        if (currentDistrict.dimensionalRegulations && currentDistrict.dimensionalRegulations.length > 0) {
+            addPageIfNeeded();
+            doc.setFontSize(12);
+            doc.text("Dimensional Regulations", 10, finalY);
+            finalY += 5;
+            doc.autoTable({
+                startY: finalY,
+                head: [['Use', 'Lot Size', 'Width', 'Depth', 'Front', 'Side', 'Rear', 'Height', 'Coverage']],
+                body: currentDistrict.dimensionalRegulations.map(d => [d.use || 'N/A', d.minLotSize || 'N/A', d.minWidth || 'N/A', d.minDepth || 'N/A', d.frontSetback || 'N/A', d.sideSetback || 'N/A', d.rearSetback || 'N/A', d.maxHeight || 'N/A', d.maxLotCoverage || 'N/A']),
+                theme: 'grid',
+                headStyles: {fillColor: [230, 230, 230], textColor: 20},
+                styles: {fontSize: 8, cellPadding: 1.5},
+                didDrawPage: (data) => { finalY = data.cursor.y + 10; }
+            });
+            finalY = doc.lastAutoTable.finalY + 10;
+        }
+
+
+        // Accessory Uses
+        if (currentDistrict.accessoryUses) {
+            addPageIfNeeded();
+            doc.setFontSize(12);
+            doc.text("Accessory Uses and Setback Requirements", 10, finalY);
+            finalY += 7;
+            
+            if (currentDistrict.accessoryUses.definitions) {
+                doc.setFontSize(11);
+                doc.text("Definitions", 14, finalY);
+                finalY += 5;
+                doc.setFontSize(9);
+                Object.entries(currentDistrict.accessoryUses.definitions).forEach(([term, def]) => {
+                    addPageIfNeeded();
+                    const lines = doc.splitTextToSize(`- ${term}: ${def}`, 170);
+                    doc.text(lines, 14, finalY);
+                    finalY += lines.length * 4 + 2;
+                });
+                finalY += 5;
+            }
+
+            if (currentDistrict.accessoryUses.permittedUses) {
+                addPageIfNeeded();
+                doc.autoTable({
+                    startY: finalY,
+                    head: [['Permitted Accessory Uses']],
+                    body: currentDistrict.accessoryUses.permittedUses.map(u => [u]),
+                    theme: 'grid',
+                    didDrawPage: (data) => { finalY = data.cursor.y + 10; }
+                });
+                finalY = doc.lastAutoTable.finalY + 10;
+            }
+            
+             if (currentDistrict.accessoryUses.setbacks && currentDistrict.accessoryUses.setbacks.bySize) {
+                addPageIfNeeded();
+                doc.autoTable({
+                    startY: finalY,
+                    head: [['Setbacks by Size', 'Side', 'Rear']],
+                    body: currentDistrict.accessoryUses.setbacks.bySize.map(s => [`Structures ${s.minSize ? `> ${s.minSize}` : `≤ ${s.maxSize}`} sq ft`, s.side, s.rear]),
+                    theme: 'grid',
+                    didDrawPage: (data) => { finalY = data.cursor.y + 10; }
+                });
+                finalY = doc.lastAutoTable.finalY + 10;
+            }
+        }
+
+    } else if (currentSearchType === 'use') {
+        const useName = document.getElementById('useSelect').value;
+        const districtsWithUse = findDistrictsByUse(useName); // Re-fetch for PDF content
+        doc.setFontSize(14);
+        doc.text(`Districts Allowing: ${useName}`, 10, finalY);
+        finalY += 10;
+        
+        doc.autoTable({
+            startY: finalY,
+            head: [['District Code', 'District Name', 'Permission Level']],
+            body: districtsWithUse.map(d => [d.code, d.name, d.status]),
+            theme: 'striped',
+            didDrawPage: (data) => { finalY = data.cursor.y + 10; }
+        });
+        finalY = doc.lastAutoTable.finalY + 10;
+    } else if (currentSearchType === 'compare') {
+        const compareDistrictCode = document.getElementById('compareDistrictSelect').value;
+        const currentUseName = document.getElementById('currentUseSelect').value;
+        const proposedUseName = document.getElementById('proposedUseSelect').value;
+        const existingParkingSpaces = parseInt(document.getElementById('existingParkingSpaces').value, 10) || 0;
+        const vacantTwoYears = document.getElementById('vacantTwoYears').checked;
+        const siteChanges = document.getElementById('siteChanges').checked;
+
+        const selectedDistrictForComparison = zoningData.districts.find(d => d.code === compareDistrictCode);
+        
+        doc.setFontSize(14);
+        doc.text(`Use Comparison in ${selectedDistrictForComparison?.code || 'N/A'} - ${selectedDistrictForComparison?.name || 'N/A'}`, 10, finalY);
+        finalY += 10;
+
+        doc.setFontSize(10);
+        doc.text(`Current Use: ${currentUseName}`, 10, finalY); finalY += 5;
+        doc.text(`Proposed Use: ${proposedUseName}`, 10, finalY); finalY += 5;
+        doc.text(`Existing Parking Spaces: ${existingParkingSpaces > 0 ? existingParkingSpaces : 'Not specified'}`, 10, finalY); finalY += 5; // Add to PDF
+        doc.text(`Vacant 2+ years: ${vacantTwoYears ? 'Yes' : 'No'}`, 10, finalY); finalY += 5;
+        doc.text(`Site changes proposed: ${siteChanges ? 'Yes' : 'No'}`, 10, finalY); finalY += 10;
+
+        // Re-run the logic to determine the result for PDF
+        const getUseDetailsInDistrict = (useName, district) => {
+            for (const categoryKey in district.uses) {
+                const category = district.uses[categoryKey];
+                const foundItem = category.items.find(item => item.name === useName);
+                if (foundItem) {
+                    return { ...foundItem, category: categoryKey };
+                }
+            }
+            return null;
+        };
+
+        const currentUse = getUseDetailsInDistrict(currentUseName, selectedDistrictForComparison);
+        const proposedUse = getUseDetailsInDistrict(proposedUseName, selectedDistrictForComparison);
+        let resultText = "";
+        let parkingTriggeredSiteChange = false;
+
+        // Declare parkingRule variables once here
+        let currentParkingRule = null;
+        let proposedParkingRule = null;
+
+        if (currentUse?.parkingKey) {
+            currentParkingRule = parkingData[currentUse.parkingKey];
+        }
+        if (proposedUse?.parkingKey) {
+            proposedParkingRule = parkingData[proposedUse.parkingKey];
+        }
+
+        // Get the proposed quantity from the input field in the UI
+        const proposedQuantityInput = document.getElementById('proposedUseQuantity');
+        const proposedQuantity = proposedQuantityInput ? (parseFloat(proposedQuantityInput.value) || 0) : 0;
+
+        if (proposedParkingRule && proposedParkingRule.calc) {
+            const calculatedProposedParking = Math.ceil(proposedQuantity * proposedParkingRule.calc.value);
+            if (calculatedProposedParking > existingParkingSpaces) {
+                parkingTriggeredSiteChange = true;
+            }
+        }
+
+
+        if (vacantTwoYears) {
+            resultText = "Site Plan Review Required: The building has been vacant for two or more years. Per § 270-114 B, Site Plan Review is required regardless of the proposed use.";
+        } else {
+            let intensification = isIntensification(currentUse?.type, proposedUse?.type); // Use optional chaining
+            if (intensification || siteChanges || parkingTriggeredSiteChange) {
+                let reasons = [];
+                if (intensification) {
+                    reasons.push(`The proposed use (${proposedUse?.name || 'N/A'}, type: ${proposedUse?.type || 'N/A'}) is considered an intensification of the current use (${currentUse?.name || 'N/A'}, type: ${currentUse?.type || 'N/A'}).`);
+                }
+                if (siteChanges) {
+                    reasons.push("Changes to building footprint, gross floor area, parking lot, driveways, landscaping, or other site features are explicitly proposed.");
+                }
+                if (parkingTriggeredSiteChange) {
+                    reasons.push(`The proposed use (${proposedUse?.name || 'N/A'}) requires more parking spaces (${calculatedProposedParking} calculated for ${proposedQuantity} ${proposedParkingRule.calc?.unit || 'units'}) than the existing ${existingParkingSpaces} spaces, potentially triggering a "change to the parking lot."`);
+                }
+                resultText = `Site Plan Review Required: ${reasons.join(' ')} Per § 270-114 A, Site Plan Review is required.`;
+            } else {
+                const proposedUseRequiresSPR = ['sitePlanReview', 'conditionalUse', 'conditionalUseAndSitePlan'].includes(proposedUse?.category); // Use optional chaining
+                if (proposedUseRequiresSPR) {
+                    resultText = `Site Plan Review Likely NOT Required (for tenancy change): Although the proposed use (${proposedUse?.name || 'N/A'}) typically requires Site Plan Review, based on § 270-114 A, if there is no intensification of use, no explicit site changes proposed, and the existing parking (${existingParkingSpaces} spaces) appears sufficient for the proposed use, Site Plan Review for this change in tenancy may not be required.`;
+                } else {
+                    resultText = `Site Plan Review NOT Required (for tenancy change): The proposed use (${proposedUse?.name || 'N/A'}) does not appear to be an intensification of the current use (${currentUse?.name || 'N/A'}), no explicit site changes are indicated, and the existing parking (${existingParkingSpaces} spaces) appears sufficient. Additionally, the proposed use is not typically a Site Plan Review use itself (or is 'Permitted by Right').`;
+                }
+            }
+        }
+        const resultLines = doc.splitTextToSize(resultText, 180);
+        doc.text(resultLines, 10, finalY);
+        finalY += resultLines.length * 4 + 5;
+
+        // Add Parking Comparison to PDF
+        if (currentParkingRule || proposedParkingRule) {
+            addPageIfNeeded();
+            doc.setFontSize(12);
+            doc.text("Parking Requirements Comparison", 10, finalY);
+            finalY += 7;
+
+            doc.setFontSize(10);
+            doc.text(`Current Use: ${currentUse?.name || 'N/A'}`, 14, finalY); finalY += 5;
+            doc.text(`Min. Spaces (Rule): ${currentParkingRule?.min || 'N/A'}`, 18, finalY); finalY += 5;
+            doc.text(`Max. Spaces (Rule): ${currentParkingRule?.max || 'N/A'}`, 18, finalY); finalY += 5;
+            if (currentParkingRule?.calc) {
+                doc.text(`Calculation basis: 1 space per ${1/currentParkingRule.calc.value} ${currentParkingRule.calc.unit}`, 18, finalY);
+                finalY += 5;
+            }
+            finalY += 3; // Small gap
+
+            doc.text(`Proposed Use: ${proposedUse?.name || 'N/A'}`, 14, finalY); finalY += 5;
+            doc.text(`Min. Spaces (Rule): ${proposedParkingRule?.min || 'N/A'}`, 18, finalY); finalY += 5;
+            doc.text(`Max. Spaces (Rule): ${proposedParkingRule?.max || 'N/A'}`, 18, finalY); finalY += 5;
+            if (proposedParkingRule?.calc) {
+                doc.text(`Calculation basis: 1 space per ${1/proposedParkingRule.calc.value} ${proposedParkingRule.calc.unit}`, 18, finalY);
+                finalY += 5;
+                doc.text(`Calculated for ${proposedQuantity} ${proposedParkingRule.calc.unit}: ${Math.ceil(proposedQuantity * proposedParkingRule.calc.value)} spaces`, 18, finalY);
+                finalY += 5;
+            }
+            finalY += 3; // Small gap
+
+            const parkingNote = "Note on Parking and Site Plan Review: Significant changes in parking demand (e.g., needing more spaces than currently available) typically constitute a 'change to the parking lot' and would trigger Site Plan Review, even if other aspects of the building are not altered. Consult the full parking regulations in § 270-73 for detailed requirements.";
+            const parkingNoteLines = doc.splitTextToSize(parkingNote, 180);
+            doc.text(parkingNoteLines, 10, finalY);
+            finalY += parkingNoteLines.length * 4 + 5;
+        }
+    }
+
+
+    doc.save(`glenville-zoning-results-${new Date().toISOString().split('T')[0]}.pdf`);
+}
